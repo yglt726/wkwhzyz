@@ -1,0 +1,83 @@
+# 完整部署栈：PostgreSQL + Redis + NestJS 后端 + Nginx 前端
+# 使用前：copy .env.example .env（或 .env.prod）并按需修改
+# 启动：docker compose -f docker-compose.prod.yml up -d --build
+# 首次初始化账号：docker compose -f docker-compose.prod.yml --profile seed run --rm seed
+name: lab-selection
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lab123}
+      POSTGRES_DB: ${POSTGRES_DB:-lab_selection}
+      TZ: Asia/Shanghai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 首次创建数据卷时自动执行 DDL（建表 + 基础种子）
+      - ./db/schema.postgresql.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lab} -d ${POSTGRES_DB:-lab_selection}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lab}:${POSTGRES_PASSWORD:-lab123}@postgres:5432/${POSTGRES_DB:-lab_selection}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      PORT: 3000
+      TZ: Asia/Shanghai
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      target: runtime
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 一次性任务：写入演练种子数据（会清空业务表，勿在生产数据上执行）
+  seed:
+    build:
+      context: ./backend
+      target: build
+    command: ["npx", "ts-node", "prisma/seed.ts"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lab}:${POSTGRES_PASSWORD:-lab123}@postgres:5432/${POSTGRES_DB:-lab_selection}?schema=public
+      TZ: Asia/Shanghai
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["seed"]
+
+volumes:
+  pgdata:
+  redisdata:

@@ -19,7 +19,7 @@
 | PostgreSQL | ❌ 5432 端口无服务 | 本地演练用 SQLite（Prisma 自动建库）；生产/联调用 `docker compose up -d` |
 | Docker | ❌ 未安装 | 不影响本地演练；有 Docker 的环境可一键起 PG + Redis |
 | Redis | ❌ 未安装 | 可选。未配置 `REDIS_URL` 时自动使用进程内锁与内存缓存 |
-| git | ❌ 未安装 | 不影响运行 |
+| git | ✅ 已安装（2.56.0） | 直接使用 |
 
 > 说明：系统在数据访问层只依赖 Prisma，SQLite 与 PostgreSQL 的业务代码完全一致。切换到 PostgreSQL 只需两步（见第五节）。
 
@@ -31,12 +31,18 @@
 d:\志愿填报系统
 ├─ docs/design.md                 # 设计文档（架构、权限矩阵、状态机、算法、接口清单）
 ├─ db/schema.postgresql.sql       # PostgreSQL 完整 DDL（枚举/索引/唯一约束/外键/种子数据）
-├─ docker-compose.yml             # PostgreSQL 16 + Redis 7 一键启动
+├─ docker-compose.yml             # 本地开发：PostgreSQL 16 + Redis 7 一键启动
+├─ docker-compose.prod.yml        # 全栈部署：PostgreSQL + Redis + 后端 + 前端
+├─ .env.example                   # 部署环境变量示例
 ├─ backend/                       # NestJS 后端
+│  ├─ Dockerfile                  # 后端多阶段构建镜像（生产依赖 + 预生成 Prisma Client）
 │  ├─ prisma/schema.prisma        # Prisma 模型（SQLite 演练库）
+│  ├─ prisma/schema.postgresql.prisma  # Prisma 模型（容器部署用 PostgreSQL）
 │  ├─ prisma/seed.ts              # 种子数据：实训室/导师/名额/时间窗/账号
 │  └─ src/                        # auth / meta / student / mentor / offers / admin / jobs
 └─ frontend/                      # React 前端
+   ├─ Dockerfile                  # 前端构建 + Nginx 托管
+   ├─ nginx.conf                  # 静态资源与 /api 反向代理
    └─ src/
       ├─ pages/                   # 学生端、导师端、管理后台页面
       ├─ api.ts / auth.tsx / Shell.tsx / App.tsx
@@ -167,7 +173,46 @@ npm start
 
 ---
 
-## 六、核心设计要点
+## 六、Docker 部署（全栈一键启动）
+
+仓库内置多阶段 Dockerfile：后端为 NestJS（生产依赖 + 预生成的 PostgreSQL Prisma Client），前端 Vite 构建后由 Nginx 托管并反向代理 `/api`；数据库使用 PostgreSQL，DDL 在数据卷首次创建时自动执行。
+
+```powershell
+cd d:\志愿填报系统
+copy .env.example .env                                                    # 至少修改 JWT_SECRET
+docker compose -f docker-compose.prod.yml up -d --build                   # 构建并启动全栈
+docker compose -f docker-compose.prod.yml --profile seed run --rm seed    # 首次：写入账号与种子数据
+```
+
+启动后访问 <http://localhost:8080>（端口由 `.env` 的 `WEB_PORT` 控制），账号与本地演练一致。
+
+| 服务 | 作用 | 对外端口 |
+| --- | --- | --- |
+| frontend | Nginx：静态资源 + `/api` 反向代理 | `${WEB_PORT}`（默认 8080） |
+| backend | NestJS，`node dist/main.js` | 仅内网 3000 |
+| postgres | PostgreSQL 16，自动执行 `db/schema.postgresql.sql` | 仅内网 5432 |
+| redis | Redis 7（未配置时后端自动降级为内存锁） | 仅内网 6379 |
+| seed | 一次性种子任务（`--profile seed`） | — |
+
+常用运维命令：
+
+```powershell
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs -f backend
+docker compose -f docker-compose.prod.yml down        # 停止，保留数据卷
+docker compose -f docker-compose.prod.yml down -v     # 停止并清空数据（下次启动重新执行 DDL）
+```
+
+注意事项：
+
+- `seed` 会先清空业务表，只用于首次初始化或演练重置，不要在有真实数据的库上执行。
+- 国内网络构建时若 Prisma 引擎下载缓慢，可在 `backend/Dockerfile` 顶部加一行 `ENV PRISMA_ENGINES_MIRROR=https://npmmirror.com/mirrors/prisma`。
+- 需要 HTTPS 时，在 Nginx 前再放一层反向代理，或修改 `frontend/nginx.conf` 监听 443 并挂载证书。
+- 也可单独部署镜像：后端镜像监听 3000（需外部 PostgreSQL），前端镜像监听 80（需能解析主机名 `backend`，或在 nginx.conf 中改成你的后端地址）。
+
+---
+
+## 七、核心设计要点
 
 详见 [docs/design.md](docs/design.md)，此处仅列关键约定：
 
@@ -183,7 +228,7 @@ npm start
 
 ---
 
-## 七、常见问题
+## 八、常见问题
 
 | 问题 | 处理 |
 | --- | --- |

@@ -1,0 +1,246 @@
+// 生产/联调库：PostgreSQL（容器部署使用本 schema 生成 Prisma Client）
+// 表结构与 db/schema.postgresql.sql 保持一致；修改模型时请同步更新两个文件。
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  role         String // STUDENT | MENTOR | ADMIN | SYSTEM
+  studentNo    String?  @unique @map("student_no")
+  mentorId     String?  @map("mentor_id")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([role])
+  @@map("users")
+}
+
+model Lab {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  intro     String   @default("")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("labs")
+}
+
+model Mentor {
+  id        String   @id @default(cuid())
+  labId     String   @map("lab_id")
+  name      String
+  title     String   @default("")
+  quota     Int      @default(0)
+  intro     String   @default("")
+  sortOrder Int      @default(0) @map("sort_order")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([labId, sortOrder])
+  @@map("mentors")
+}
+
+model Round {
+  roundNo   Int      @id @map("round_no")
+  name      String
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("rounds")
+}
+
+model StageWindow {
+  id        String   @id @default(cuid())
+  stageKey  String   @map("stage_key")
+  roundNo   Int      @default(0) @map("round_no")
+  startsAt  DateTime @map("starts_at")
+  endsAt    DateTime @map("ends_at")
+
+  @@unique([stageKey, roundNo])
+  @@index([startsAt, endsAt])
+  @@map("stage_windows")
+}
+
+model Application {
+  id                  String   @id @default(cuid())
+  studentId           String   @map("student_id")
+  roundNo             Int      @map("round_no")
+  acceptLabAdjust     Boolean  @default(false) @map("accept_lab_adjust")
+  acceptCollegeAdjust Boolean  @default(false) @map("accept_college_adjust")
+  status              String   @default("SUBMITTED")
+  submittedAt         DateTime @default(now()) @map("submitted_at")
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([studentId, roundNo])
+  @@index([roundNo, status])
+  @@map("applications")
+}
+
+model Intent {
+  id            String   @id @default(cuid())
+  applicationId String   @map("application_id")
+  studentId     String   @map("student_id")
+  roundNo       Int      @map("round_no")
+  mentorId      String   @map("mentor_id")
+  labId         String   @map("lab_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([applicationId, mentorId])
+  @@index([roundNo, labId])
+  @@index([roundNo, studentId])
+  @@index([mentorId, roundNo])
+  @@map("intents")
+}
+
+model Interview {
+  id         String    @id @default(cuid())
+  roundNo    Int       @map("round_no")
+  studentId  String    @map("student_id")
+  labId      String    @map("lab_id")
+  attitude   Int?
+  logic      Int?
+  coding     Int?
+  timeInvest Int?      @map("time_invest")
+  total      Float?
+  remark     String    @default("")
+  status     String    @default("PENDING")
+  scoredBy   String?   @map("scored_by")
+  scoredAt   DateTime? @map("scored_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@unique([roundNo, studentId, labId])
+  @@index([labId, roundNo, status])
+  @@index([studentId, roundNo])
+  @@map("interviews")
+}
+
+model Offer {
+  id            String    @id @default(cuid())
+  roundNo       Int       @map("round_no")
+  studentId     String    @map("student_id")
+  mentorId      String    @map("mentor_id")
+  labId         String    @map("lab_id")
+  kind          String // PRIMARY | WAITLIST | LAB_ADJUST | COLLEGE_ADJUST | FINAL
+  rank          Int?
+  status        String    @default("PENDING")
+  priorityLevel Int?      @map("priority_level")
+  autoConfirmed Boolean   @default(false) @map("auto_confirmed")
+  overQuota     Boolean   @default(false) @map("over_quota")
+  note          String    @default("")
+  expiresAt     DateTime? @map("expires_at")
+  decidedAt     DateTime? @map("decided_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([mentorId, status])
+  @@index([studentId, roundNo, status])
+  @@index([labId, roundNo, kind])
+  @@index([expiresAt])
+  @@map("offers")
+}
+
+// 导师提交的室内调剂候选顺位；未提交时由系统按面试总分自动生成
+model LabAdjustCandidate {
+  id        String   @id @default(cuid())
+  roundNo   Int      @map("round_no")
+  labId     String   @map("lab_id")
+  mentorId  String   @map("mentor_id")
+  studentId String   @map("student_id")
+  rank      Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([roundNo, mentorId, studentId])
+  @@index([roundNo, labId, rank])
+  @@map("lab_adjust_candidates")
+}
+
+model Confirmation {
+  id        String   @id @default(cuid())
+  offerId   String   @unique @map("offer_id")
+  studentId String   @map("student_id")
+  decision  String
+  source    String
+  decidedAt DateTime @default(now()) @map("decided_at")
+  note      String   @default("")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([studentId, decidedAt])
+  @@map("confirmations")
+}
+
+model Withdrawal {
+  id         String   @id @default(cuid())
+  offerId    String   @map("offer_id")
+  studentId  String   @map("student_id")
+  mentorId   String   @map("mentor_id")
+  reason     String
+  detail     String   @default("")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([mentorId, createdAt])
+  @@map("withdrawals")
+}
+
+model QuotaSnapshot {
+  id             String   @id @default(cuid())
+  roundNo        Int      @default(0) @map("round_no")
+  mentorId       String   @map("mentor_id")
+  quota          Int
+  confirmedCount Int      @map("confirmed_count")
+  pendingCount   Int      @map("pending_count")
+  releasedCount  Int      @map("released_count")
+  overRatio      Float    @default(0) @map("over_ratio")
+  note           String   @default("")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([roundNo, mentorId])
+  @@map("quota_snapshots")
+}
+
+model Anomaly {
+  id         String   @id @default(cuid())
+  roundNo    Int      @default(0) @map("round_no")
+  type       String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  detail     String   @default("")
+  resolved   Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([resolved, createdAt])
+  @@map("anomalies")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  @map("actor_id")
+  actorName  String   @default("system") @map("actor_name")
+  actorRole  String   @default("SYSTEM") @map("actor_role")
+  action     String
+  entityType String   @default("") @map("entity_type")
+  entityId   String   @default("") @map("entity_id")
+  detail     String   @default("")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model SystemConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("system_configs")
+}
