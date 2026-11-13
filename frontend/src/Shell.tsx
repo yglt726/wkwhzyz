@@ -1,6 +1,7 @@
 import { Avatar, Dropdown, Layout, Menu, Space, Tag, Typography } from 'antd';
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
+import pkg from '../package.json';
 import { homeOf, useAuth } from './auth';
 
 const { Header, Sider, Content } = Layout;
@@ -41,7 +42,7 @@ export function Shell({
           items={menus.map((m) => ({ key: m.key, label: m.label }))}
           onClick={(e) => navigate(e.key)}
         />
-        <div className="app-sider-footer">v1.0 · 本地演练环境</div>
+        <div className="app-sider-footer">v{pkg.version} · 本地演练环境</div>
       </Sider>
       <Layout>
         <Header className="app-header">

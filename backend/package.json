@@ -1,6 +1,6 @@
 {
   "name": "lab-selection-backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "学生实训室进组选拔系统 - NestJS 后端",
   "scripts": {
