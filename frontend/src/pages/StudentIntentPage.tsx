@@ -1,5 +1,6 @@
 import {
   Alert,
+  App,
   Button,
   Card,
   Checkbox,
@@ -14,7 +15,6 @@ import {
   Switch,
   Tag,
   Typography,
-  message,
 } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
@@ -28,6 +28,7 @@ const ROUND_OPTIONS = [
 ];
 
 export default function StudentIntentPage() {
+  const { message } = App.useApp();
   const { user } = useAuth();
   const [roundNo, setRoundNo] = useState(1);
   const [bootstrap, setBootstrap] = useState<any>(null);

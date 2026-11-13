@@ -25,6 +25,27 @@ model User {
   @@map("users")
 }
 
+model StudentProfile {
+  id        String   @id @default(cuid())
+  studentId String   @unique @map("student_id")
+  major     String   @default("")
+  className String   @default("") @map("class_name")
+  phone     String   @default("")
+  email     String   @default("")
+  gpa       Float?
+  rankNo    Int?     @map("rank_no")
+  rankTotal Int?     @map("rank_total")
+  intro     String   @default("")
+  resumeFile       String?   @map("resume_file")
+  resumeName       String    @default("") @map("resume_name")
+  resumeSize       Int?      @map("resume_size")
+  resumeUploadedAt DateTime? @map("resume_uploaded_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("student_profiles")
+}
+
 model Lab {
   id        String   @id @default(cuid())
   code      String   @unique

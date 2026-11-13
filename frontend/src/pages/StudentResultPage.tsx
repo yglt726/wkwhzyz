@@ -1,9 +1,10 @@
-import { Alert, Card, Descriptions, Empty, Result, Space, Table, Tag, Typography, message } from 'antd';
+import { Alert, App, Card, Descriptions, Empty, Result, Space, Table, Tag, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { api, errMsg, formatTime } from '../api';
 import { useAuth } from '../auth';
 
 export default function StudentResultPage() {
+  const { message } = App.useApp();
   const { user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);

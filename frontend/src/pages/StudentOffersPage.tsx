@@ -1,5 +1,6 @@
 import {
   Alert,
+  App,
   Button,
   Card,
   Checkbox,
@@ -13,7 +14,6 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from 'antd';
 import {
   CheckCircleFilled,
@@ -41,6 +41,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function StudentOffersPage() {
+  const { message } = App.useApp();
   const [data, setData] = useState<any>(null);
   const [roundNo, setRoundNo] = useState<number>(1);
   const [initialized, setInitialized] = useState(false);

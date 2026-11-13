@@ -1,5 +1,6 @@
 import {
   Alert,
+  App,
   Button,
   Card,
   Col,
@@ -15,13 +16,13 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from 'antd';
 import { ExclamationCircleOutlined, ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { api, errMsg, formatTime } from '../api';
 
 export default function AdminQuotaPage() {
+  const { message } = App.useApp();
   const [data, setData] = useState<any>(null);
   const [windows, setWindows] = useState<any>(null);
   const [loading, setLoading] = useState(true);

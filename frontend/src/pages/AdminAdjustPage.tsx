@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Col, Empty, Row, Space, Statistic, Table, Tag, Typography, message } from 'antd';
+import { Alert, App, Button, Card, Col, Empty, Row, Space, Statistic, Table, Tag, Typography } from 'antd';
 import { DownloadOutlined, PrinterOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { api, errMsg, formatTime } from '../api';
@@ -30,7 +30,7 @@ const LEVEL_RULES: Record<number, { tag: string; color: string; title: string; r
   },
 };
 
-function exportCsv(rows: any[]) {
+function exportCsv(rows: any[], message: ReturnType<typeof App.useApp>['message']) {
   if (!rows.length) {
     message.warning('当前没有可导出的公示名单');
     return;
@@ -60,6 +60,7 @@ function exportCsv(rows: any[]) {
 }
 
 export default function AdminAdjustPage() {
+  const { message } = App.useApp();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<any>(null);
@@ -115,7 +116,7 @@ export default function AdminAdjustPage() {
           <Button onClick={() => void load()} loading={loading}>
             刷新
           </Button>
-          <Button icon={<DownloadOutlined />} onClick={() => exportCsv(finalList)}>
+          <Button icon={<DownloadOutlined />} onClick={() => exportCsv(finalList, message)}>
             导出 CSV
           </Button>
           <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
@@ -230,7 +231,7 @@ export default function AdminAdjustPage() {
         style={{ marginBottom: 16 }}
         extra={
           <Space className="no-print">
-            <Button size="small" icon={<DownloadOutlined />} onClick={() => exportCsv(finalList)}>
+            <Button size="small" icon={<DownloadOutlined />} onClick={() => exportCsv(finalList, message)}>
               导出 CSV
             </Button>
             <Button size="small" icon={<PrinterOutlined />} onClick={() => window.print()}>

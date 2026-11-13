@@ -16,6 +16,7 @@ async function main() {
   await prisma.quotaSnapshot.deleteMany();
   await prisma.anomaly.deleteMany();
   await prisma.auditLog.deleteMany();
+  await prisma.studentProfile.deleteMany();
   await prisma.user.deleteMany();
   await prisma.mentor.deleteMany();
   await prisma.lab.deleteMany();
@@ -106,6 +107,33 @@ async function main() {
       name,
       role: 'STUDENT',
       studentNo: `2026${String(i + 1).padStart(3, '0')}`,
+    })),
+  });
+
+  const profileSeeds = [
+    { major: '计算机科学与技术', className: '计科2201', gpa: 3.82, rankNo: 3, rankTotal: 120, intro: '长期参与 ACM 集训，熟悉 C++ 与 Python，做过图像分类课程项目，希望在机器学习工程方向深入。' },
+    { major: '软件工程', className: '软工2202', gpa: 3.75, rankNo: 5, rankTotal: 130, intro: '前端与可视化经验较多，独立完成过校园二手交易平台，愿意承担项目文档与联调工作。' },
+    { major: '数据科学与大数据技术', className: '数据2201', gpa: 3.61, rankNo: 8, rankTotal: 90, intro: '熟悉 Spark 与 Flink 基础，课程设计中做过实时日志统计，动手能力强。' },
+    { major: '计算机科学与技术', className: '计科2202', gpa: 3.9, rankNo: 1, rankTotal: 120, intro: '专业排名第一，数学与算法基础扎实，已自学深度学习框架，目标是读研并做视觉方向。' },
+    { major: '软件工程', className: '软工2201', gpa: 3.55, rankNo: 12, rankTotal: 130, intro: '后端开发经验为主，熟悉 Java 与数据库设计，做事细致，愿意投入每周固定时间。' },
+    { major: '信息安全', className: '信安2201', gpa: 3.7, rankNo: 4, rankTotal: 85, intro: '参加过校 CTF 战队，熟悉 Web 渗透基础与常见漏洞复现，希望参与真实攻防演练。' },
+    { major: '数据科学与大数据技术', className: '数据2202', gpa: 3.48, rankNo: 15, rankTotal: 90, intro: '对数据平台与云原生感兴趣，有 Docker 与 Kubernetes 使用经验，沟通协作积极。' },
+    { major: '网络工程', className: '网工2201', gpa: 3.66, rankNo: 6, rankTotal: 88, intro: '网络协议与 Linux 运维基础较好，做过校园网络排障实践，希望往安全运营方向发展。' },
+    { major: '信息安全', className: '信安2202', gpa: 3.88, rankNo: 2, rankTotal: 85, intro: '代码审计方向，熟悉 Java 与 Python 源码分析，曾在漏洞挖掘课程中取得优秀成绩。' },
+    { major: '软件工程', className: '软工2202', gpa: 3.59, rankNo: 9, rankTotal: 130, intro: '全栈开发入门，参与过社团管理系统开发，学习主动性强，希望积累完整项目经验。' },
+  ];
+  const studentUsers = await prisma.user.findMany({ where: { role: 'STUDENT' }, orderBy: { username: 'asc' } });
+  await prisma.studentProfile.createMany({
+    data: studentUsers.map((s, i) => ({
+      studentId: s.id,
+      major: profileSeeds[i].major,
+      className: profileSeeds[i].className,
+      phone: `1380000${String(i + 1).padStart(4, '0')}`,
+      email: `${s.username}@campus.edu.cn`,
+      gpa: profileSeeds[i].gpa,
+      rankNo: profileSeeds[i].rankNo,
+      rankTotal: profileSeeds[i].rankTotal,
+      intro: profileSeeds[i].intro,
     })),
   });
 

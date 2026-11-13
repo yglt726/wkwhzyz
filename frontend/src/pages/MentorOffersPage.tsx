@@ -1,5 +1,6 @@
 import {
   Alert,
+  App,
   Button,
   Card,
   Col,
@@ -15,7 +16,6 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from 'antd';
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, ExclamationCircleOutlined, ThunderboltOutlined, UndoOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
@@ -38,6 +38,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function MentorOffersPage() {
+  const { message } = App.useApp();
   const [roundNo, setRoundNo] = useState(1);
   const [data, setData] = useState<any>(null);
   const [applicants, setApplicants] = useState<any>(null);

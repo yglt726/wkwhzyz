@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Empty, Space, Table, Tabs, Tag, Typography, message } from 'antd';
+import { Alert, App, Button, Card, Empty, Space, Table, Tabs, Tag, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { api, errMsg, formatTime } from '../api';
 
@@ -11,6 +11,7 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default function AdminAuditPage() {
+  const { message } = App.useApp();
   const [anomalies, setAnomalies] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

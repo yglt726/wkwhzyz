@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Mentor } from '@prisma/client';
+import fs from 'fs';
 import { AuditService } from '../common/services/audit.service';
+import { resumeAbsolutePath } from '../common/resume';
 import { TimeService } from '../common/services/time.service';
 import { AuthUser, OFFER_KIND_LABELS, OFFER_STATUS_LABELS } from '../common/types';
 import { MetaService } from '../meta/meta.service';
@@ -28,26 +30,31 @@ export class MentorService {
 
   async applicants(user: AuthUser, roundNo: number) {
     const mentor = await this.getMentor(user);
-    const [intents, students, interviews, myIntents, apps] = await Promise.all([
+    const [intents, students, interviews, myIntents, apps, profiles] = await Promise.all([
       this.prisma.intent.findMany({ where: { roundNo, labId: mentor.labId } }),
       this.prisma.user.findMany({ where: { role: 'STUDENT', active: true } }),
       this.prisma.interview.findMany({ where: { roundNo, labId: mentor.labId } }),
       this.prisma.intent.findMany({ where: { roundNo, mentorId: mentor.id } }),
       this.prisma.application.findMany({ where: { roundNo } }),
+      this.prisma.studentProfile.findMany(),
     ]);
     const studentMap = new Map(students.map((s) => [s.id, s]));
     const interviewMap = new Map(interviews.map((i) => [i.studentId, i]));
     const mySet = new Set(myIntents.map((i) => i.studentId));
     const appMap = new Map(apps.map((a) => [a.studentId, a]));
+    const profileMap = new Map(profiles.map((p) => [p.studentId, p]));
 
     const rows = intents.map((i) => {
       const s = studentMap.get(i.studentId);
       const iv = interviewMap.get(i.studentId);
       const app = appMap.get(i.studentId);
+      const profile = profileMap.get(i.studentId);
       return {
         studentId: i.studentId,
         name: s?.name ?? '',
         studentNo: s?.studentNo ?? '',
+        major: profile?.major ?? '',
+        className: profile?.className ?? '',
         appliedToMe: mySet.has(i.studentId),
         intentMentorCount: intents.filter((x) => x.studentId === i.studentId).length,
         acceptLabAdjust: app?.acceptLabAdjust ?? false,
@@ -77,6 +84,97 @@ export class MentorService {
       interviewWindow: await this.time.getWindow('INTERVIEW', roundNo),
       rows: deduped.sort((a, b) => (b.interview?.total ?? -1) - (a.interview?.total ?? -1)),
     };
+  }
+
+  async studentDetail(user: AuthUser, studentId: string, roundNo: number) {
+    const mentor = await this.getMentor(user);
+    const intent = await this.prisma.intent.findFirst({
+      where: { roundNo, labId: mentor.labId, studentId },
+    });
+    if (!intent) throw new BadRequestException('该学生未报名本实训室');
+
+    const [student, profile, app, intents] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: studentId } }),
+      this.prisma.studentProfile.findUnique({ where: { studentId } }),
+      this.prisma.application.findUnique({ where: { studentId_roundNo: { studentId, roundNo } } }),
+      this.prisma.intent.findMany({ where: { roundNo, studentId } }),
+    ]);
+    if (!student) throw new NotFoundException('学生不存在');
+
+    const [mentors, labs, interview] = await Promise.all([
+      this.prisma.mentor.findMany({ where: { id: { in: intents.map((i) => i.mentorId) } } }),
+      this.prisma.lab.findMany({ where: { id: { in: intents.map((i) => i.labId) } } }),
+      this.prisma.interview.findUnique({
+        where: { roundNo_studentId_labId: { roundNo, studentId, labId: mentor.labId } },
+      }),
+    ]);
+    const mentorMap = new Map(mentors.map((m) => [m.id, m]));
+    const labMap = new Map(labs.map((l) => [l.id, l]));
+
+    return {
+      roundNo,
+      student: { id: student.id, name: student.name, studentNo: student.studentNo ?? '' },
+      profile: profile
+        ? {
+            major: profile.major,
+            className: profile.className,
+            phone: profile.phone,
+            email: profile.email,
+            gpa: profile.gpa,
+            rankNo: profile.rankNo,
+            rankTotal: profile.rankTotal,
+            intro: profile.intro,
+            resume:
+              profile.resumeFile && profile.resumeName
+                ? { name: profile.resumeName, size: profile.resumeSize ?? 0, uploadedAt: profile.resumeUploadedAt }
+                : null,
+          }
+        : null,
+      application: app
+        ? {
+            acceptLabAdjust: app.acceptLabAdjust,
+            acceptCollegeAdjust: app.acceptCollegeAdjust,
+            status: app.status,
+            submittedAt: app.submittedAt,
+          }
+        : null,
+      intents: intents.map((i) => {
+        const m = mentorMap.get(i.mentorId);
+        const lab = labMap.get(i.labId);
+        return {
+          mentorId: i.mentorId,
+          mentorName: m?.name ?? '',
+          mentorTitle: m?.title ?? '',
+          labName: lab?.name ?? '',
+          appliedToMe: i.mentorId === mentor.id,
+        };
+      }),
+      interview: interview
+        ? {
+            status: interview.status,
+            attitude: interview.attitude,
+            logic: interview.logic,
+            coding: interview.coding,
+            timeInvest: interview.timeInvest,
+            total: interview.total,
+            remark: interview.remark,
+            scoredAt: interview.scoredAt,
+          }
+        : null,
+    };
+  }
+
+  async studentResume(user: AuthUser, studentId: string) {
+    const mentor = await this.getMentor(user);
+    const intent = await this.prisma.intent.findFirst({
+      where: { labId: mentor.labId, studentId },
+    });
+    if (!intent) throw new BadRequestException('该学生未报名本实训室');
+    const profile = await this.prisma.studentProfile.findUnique({ where: { studentId } });
+    if (!profile?.resumeFile) throw new NotFoundException('该学生尚未上传简历');
+    const absPath = resumeAbsolutePath(profile.resumeFile);
+    if (!fs.existsSync(absPath)) throw new NotFoundException('简历文件已丢失，请联系学生重新上传');
+    return { absPath, name: profile.resumeName || '简历' };
   }
 
   async score(user: AuthUser, dto: ScoreInterviewDto) {

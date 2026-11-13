@@ -17,3 +17,6 @@ backend/.env
 # 日志与临时文件
 *.log
 .screenshots/
+
+# 学生上传的简历文件
+backend/uploads/

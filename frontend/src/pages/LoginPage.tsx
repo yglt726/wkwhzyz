@@ -1,4 +1,4 @@
-import { Button, Card, Form, Input, Space, Tag, Timeline, Typography, message } from 'antd';
+import { App, Button, Card, Form, Input, Timeline, Typography } from 'antd';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -17,6 +17,7 @@ const STEPS = [
 ];
 
 export default function LoginPage() {
+  const { message } = App.useApp();
   const { login } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -60,7 +61,7 @@ export default function LoginPage() {
         </div>
       </div>
       <div className="login-main">
-        <Card className="login-card" bordered={false}>
+        <Card className="login-card" variant="borderless">
           <Typography.Title level={3} style={{ marginBottom: 4 }}>
             登录选拔系统
           </Typography.Title>
@@ -72,26 +73,12 @@ export default function LoginPage() {
               <Input size="large" prefix={<UserOutlined />} placeholder="如 student01 / mentor01 / admin" />
             </Form.Item>
             <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
-              <Input.Password size="large" prefix={<LockOutlined />} placeholder="测试密码见下方" />
+              <Input.Password size="large" prefix={<LockOutlined />} placeholder="请输入密码" />
             </Form.Item>
             <Button type="primary" htmlType="submit" size="large" block loading={loading}>
               进入系统
             </Button>
           </Form>
-          <div className="login-quick">
-            <Typography.Text type="secondary">一键填入测试账号</Typography.Text>
-            <Space wrap style={{ marginTop: 8 }}>
-              <Button size="small" onClick={() => { form.setFieldsValue({ username: 'student01', password: 'student123' }); }}>
-                <Tag color="green">学生</Tag> student01
-              </Button>
-              <Button size="small" onClick={() => { form.setFieldsValue({ username: 'mentor01', password: 'mentor123' }); }}>
-                <Tag color="blue">导师</Tag> mentor01
-              </Button>
-              <Button size="small" onClick={() => { form.setFieldsValue({ username: 'admin', password: 'admin123' }); }}>
-                <Tag color="gold">管理员</Tag> admin
-              </Button>
-            </Space>
-          </div>
           <Typography.Paragraph type="secondary" className="login-hint">
             演练提示：后台可设置模拟时钟，按 8 个环节推进流程。
           </Typography.Paragraph>

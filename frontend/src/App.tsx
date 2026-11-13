@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage';
 import StudentIntentPage from './pages/StudentIntentPage';
 import StudentOffersPage from './pages/StudentOffersPage';
 import StudentResultPage from './pages/StudentResultPage';
+import StudentProfilePage from './pages/StudentProfilePage';
 import MentorApplicantsPage from './pages/MentorApplicantsPage';
 import MentorOffersPage from './pages/MentorOffersPage';
 import AdminQuotaPage from './pages/AdminQuotaPage';
@@ -27,6 +28,7 @@ const STUDENT_MENUS = [
   { key: '/student/intent', label: '意向填报' },
   { key: '/student/offers', label: '我的录取' },
   { key: '/student/result', label: '我的结果' },
+  { key: '/student/profile', label: '个人档案' },
 ];
 
 const MENTOR_MENUS = [
@@ -62,6 +64,7 @@ export default function App() {
             <Route path="intent" element={<StudentIntentPage />} />
             <Route path="offers" element={<StudentOffersPage />} />
             <Route path="result" element={<StudentResultPage />} />
+            <Route path="profile" element={<StudentProfilePage />} />
           </Route>
 
           <Route

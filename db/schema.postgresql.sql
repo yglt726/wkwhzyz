@@ -84,6 +84,26 @@ COMMENT ON TABLE users IS '四类角色：学生 / 导师 / 学院管理员 / �
 
 CREATE INDEX idx_users_role ON users(role);
 
+CREATE TABLE student_profiles (
+  id          text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  student_id  text        NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  major       varchar(80) NOT NULL DEFAULT '',
+  class_name  varchar(50) NOT NULL DEFAULT '',
+  phone       varchar(30) NOT NULL DEFAULT '',
+  email       varchar(100) NOT NULL DEFAULT '',
+  gpa         numeric(3,2),
+  rank_no     integer,
+  rank_total  integer,
+  intro       text        NOT NULL DEFAULT '',
+  resume_file text,
+  resume_name varchar(200) NOT NULL DEFAULT '',
+  resume_size integer,
+  resume_uploaded_at timestamptz,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE student_profiles IS '学生扩展档案：专业、班级、联系方式、绩点与排名、个人简介，供导师面试前查阅';
+
 CREATE TABLE rounds (
   round_no   integer PRIMARY KEY CHECK (round_no BETWEEN 1 AND 3),
   name       varchar(50) NOT NULL,

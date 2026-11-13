@@ -1,10 +1,15 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { AuditService } from '../common/services/audit.service';
 import { TimeService } from '../common/services/time.service';
 import { AuthUser, OFFER_KIND_LABELS, OFFER_STATUS_LABELS } from '../common/types';
+import { RESUME_EXTENSIONS, RESUME_MAX_SIZE, decodeUploadFilename, ensureResumeDir, resumeAbsolutePath } from '../common/resume';
 import { OfferService } from '../offers/offer.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SubmitIntentsDto } from './dto/submit-intents.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class StudentService {
@@ -14,6 +19,138 @@ export class StudentService {
     private readonly audit: AuditService,
     private readonly offers: OfferService,
   ) {}
+
+  async getProfile(studentId: string) {
+    const [user, profile] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: studentId } }),
+      this.prisma.studentProfile.findUnique({ where: { studentId } }),
+    ]);
+    if (!user || user.role !== 'STUDENT') throw new NotFoundException('学生不存在');
+    return {
+      student: {
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        studentNo: user.studentNo ?? '',
+      },
+      profile: {
+        major: profile?.major ?? '',
+        className: profile?.className ?? '',
+        gpa: profile?.gpa ?? null,
+        rankNo: profile?.rankNo ?? null,
+        rankTotal: profile?.rankTotal ?? null,
+        phone: profile?.phone ?? '',
+        email: profile?.email ?? '',
+        intro: profile?.intro ?? '',
+        resume:
+          profile?.resumeFile && profile.resumeName
+            ? {
+                name: profile.resumeName,
+                size: profile.resumeSize ?? 0,
+                uploadedAt: profile.resumeUploadedAt,
+              }
+            : null,
+      },
+    };
+  }
+
+  async updateProfile(studentId: string, dto: UpdateProfileDto, actor: AuthUser) {
+    const user = await this.prisma.user.findUnique({ where: { id: studentId } });
+    if (!user || user.role !== 'STUDENT') throw new NotFoundException('学生不存在');
+
+    const data: { phone?: string; email?: string; intro?: string } = {};
+    if (dto.phone !== undefined) data.phone = dto.phone.trim();
+    if (dto.email !== undefined) data.email = dto.email.trim();
+    if (dto.intro !== undefined) data.intro = dto.intro.trim();
+
+    await this.prisma.studentProfile.upsert({
+      where: { studentId },
+      create: { studentId, ...data },
+      update: data,
+    });
+    await this.audit.log({
+      actor,
+      action: 'PROFILE_UPDATE',
+      entityType: 'STUDENT_PROFILE',
+      entityId: studentId,
+      detail: data,
+    });
+    return this.getProfile(studentId);
+  }
+
+  async uploadResume(studentId: string, file: { path: string; originalname: string; size: number } | undefined, actor: AuthUser) {
+    if (!file) throw new BadRequestException('请选择要上传的简历文件');
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (!RESUME_EXTENSIONS.includes(ext)) {
+      this.removeFile(file.path);
+      throw new BadRequestException('仅支持 PDF、DOC、DOCX 格式的简历');
+    }
+    if (file.size > RESUME_MAX_SIZE) {
+      this.removeFile(file.path);
+      throw new BadRequestException('简历文件不能超过 5MB');
+    }
+
+    ensureResumeDir();
+    const originalName = decodeUploadFilename(file.originalname || '简历');
+    const fileName = `${randomUUID()}${ext}`;
+    const target = resumeAbsolutePath(fileName);
+    try {
+      fs.renameSync(file.path, target);
+    } catch {
+      this.removeFile(file.path);
+      throw new BadRequestException('简历保存失败，请稍后重试');
+    }
+
+    const old = await this.prisma.studentProfile.findUnique({ where: { studentId } });
+    const now = await this.time.getNow();
+    await this.prisma.studentProfile.upsert({
+      where: { studentId },
+      create: {
+        studentId,
+        resumeFile: fileName,
+        resumeName: originalName,
+        resumeSize: file.size,
+        resumeUploadedAt: now,
+      },
+      update: {
+        resumeFile: fileName,
+        resumeName: originalName,
+        resumeSize: file.size,
+        resumeUploadedAt: now,
+      },
+    });
+    if (old?.resumeFile && old.resumeFile !== fileName) {
+      this.removeFile(resumeAbsolutePath(old.resumeFile));
+    }
+    await this.audit.log({
+      actor,
+      action: 'RESUME_UPLOAD',
+      entityType: 'STUDENT_PROFILE',
+      entityId: studentId,
+      detail: { name: originalName, size: file.size },
+    });
+    return this.getProfile(studentId);
+  }
+
+  async resumeForStudent(studentId: string) {
+    const profile = await this.prisma.studentProfile.findUnique({ where: { studentId } });
+    return this.resolveResume(profile?.resumeFile, profile?.resumeName);
+  }
+
+  resolveResume(fileName?: string | null, displayName?: string | null) {
+    if (!fileName) throw new NotFoundException('尚未上传简历');
+    const absPath = resumeAbsolutePath(fileName);
+    if (!fs.existsSync(absPath)) throw new NotFoundException('简历文件已丢失，请重新上传');
+    return { absPath, name: displayName || '简历' };
+  }
+
+  private removeFile(filePath: string) {
+    try {
+      if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch {
+      // 文件清理失败不影响主流程
+    }
+  }
 
   async getIntents(studentId: string, roundNo = 1) {
     const application = await this.prisma.application.findUnique({

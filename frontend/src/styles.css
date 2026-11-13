@@ -649,6 +649,17 @@ body {
   background: #fffbe6 !important;
 }
 
+.detail-intent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fafcff;
+}
+
 .publish-quota {
   padding: 14px 16px;
   margin-bottom: 16px;

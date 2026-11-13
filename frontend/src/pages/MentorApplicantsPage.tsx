@@ -1,8 +1,12 @@
 import {
   Alert,
+  App,
   Button,
   Card,
   Col,
+  Descriptions,
+  Divider,
+  Drawer,
   Form,
   Input,
   InputNumber,
@@ -16,9 +20,8 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from 'antd';
-import { KeyOutlined } from '@ant-design/icons';
+import { DownloadOutlined, KeyOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, errMsg, formatTime } from '../api';
 import { useAuth } from '../auth';
@@ -30,12 +33,16 @@ const ROUND_OPTIONS = [
 ];
 
 export default function MentorApplicantsPage() {
+  const { message } = App.useApp();
   const { user } = useAuth();
   const [roundNo, setRoundNo] = useState(1);
   const [data, setData] = useState<any>(null);
   const [bootstrap, setBootstrap] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<any>(null);
+  const [detailRow, setDetailRow] = useState<any>(null);
+  const [detail, setDetail] = useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [saveMode, setSaveMode] = useState<'close' | 'next'>('close');
   const [form] = Form.useForm();
@@ -94,6 +101,35 @@ export default function MentorApplicantsPage() {
   const openScore = (row: any) => {
     setEditing(row);
     fillForm(row);
+  };
+
+  const openDetail = async (row: any) => {
+    setDetailRow(row);
+    setDetail(null);
+    setDetailLoading(true);
+    try {
+      const res = await api.get(`/mentor/students/${row.studentId}`, { params: { roundNo } });
+      setDetail(res.data);
+    } catch (e) {
+      message.error(errMsg(e));
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const downloadStudentResume = async () => {
+    if (!detailRow) return;
+    try {
+      const res = await api.get(`/mentor/students/${detailRow.studentId}/resume`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = detail?.profile?.resume?.name || '简历';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      message.error(errMsg(e));
+    }
   };
 
   const nextRowOf = (currentId: string, latestRows: any[]) => {
@@ -248,19 +284,22 @@ export default function MentorApplicantsPage() {
             loading={loading}
             size="small"
             dataSource={rows}
-            scroll={{ x: 980 }}
+            scroll={{ x: 1040 }}
             pagination={false}
             rowClassName={(r: any) => (r.interview ? '' : 'row-unscored')}
             columns={[
               {
                 title: '学生',
                 dataIndex: 'name',
-                width: 110,
+                width: 150,
                 render: (v: string, r: any) => (
                   <Space direction="vertical" size={0}>
                     <strong>{v}</strong>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                       {r.studentNo}
+                    </Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {r.major || '-'} · {r.className || '-'}
                     </Typography.Text>
                   </Space>
                 ),
@@ -313,18 +352,23 @@ export default function MentorApplicantsPage() {
               },
               {
                 title: '操作',
-                width: 110,
+                width: 170,
                 fixed: 'right',
                 render: (_: any, r: any) => (
-                  <Button
-                    type={r.interview ? 'link' : 'primary'}
-                    size={r.interview ? 'small' : 'middle'}
-                    ghost={!r.interview}
-                    disabled={!interviewOpen}
-                    onClick={() => openScore(r)}
-                  >
-                    {r.interview ? '修改评分' : '立即评分'}
-                  </Button>
+                  <Space size={4}>
+                    <Button size="small" type="link" onClick={() => void openDetail(r)}>
+                      查看信息
+                    </Button>
+                    <Button
+                      type={r.interview ? 'link' : 'primary'}
+                      size={r.interview ? 'small' : 'middle'}
+                      ghost={!r.interview}
+                      disabled={!interviewOpen}
+                      onClick={() => openScore(r)}
+                    >
+                      {r.interview ? '修改评分' : '评分'}
+                    </Button>
+                  </Space>
                 ),
               },
             ]}
@@ -339,6 +383,153 @@ export default function MentorApplicantsPage() {
         message="评分 → 提交名单"
         description="弹窗内可用 Ctrl+Enter 保存并自动跳到下一位未评分学生，不必反复返回列表。完成本室所有报名学生评分后，前往「名额与名单」提交拟录取与递补名单。"
       />
+
+      <Drawer
+        open={Boolean(detailRow)}
+        onClose={() => {
+          setDetailRow(null);
+          setDetail(null);
+        }}
+        width={560}
+        loading={detailLoading}
+        title={`学生信息 · ${detailRow?.name ?? ''}`}
+        footer={
+          <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              onClick={() => {
+                setDetailRow(null);
+                setDetail(null);
+              }}
+            >
+              关闭
+            </Button>
+            <Button
+              type="primary"
+              disabled={!interviewOpen}
+              onClick={() => {
+                const row = detailRow;
+                setDetailRow(null);
+                setDetail(null);
+                openScore(row);
+              }}
+            >
+              {detailRow?.interview ? '修改评分' : '去评分'}
+            </Button>
+          </Space>
+        }
+      >
+        {detail && (
+          <>
+            <Descriptions
+              size="small"
+              column={2}
+              bordered
+              items={[
+                { key: 'name', label: '姓名', children: detail.student.name },
+                { key: 'studentNo', label: '学号', children: detail.student.studentNo || '-' },
+                { key: 'major', label: '专业', children: detail.profile?.major || '-' },
+                { key: 'className', label: '班级', children: detail.profile?.className || '-' },
+                { key: 'gpa', label: '绩点', children: detail.profile?.gpa ?? '-' },
+                {
+                  key: 'rank',
+                  label: '专业排名',
+                  children:
+                    detail.profile?.rankNo && detail.profile?.rankTotal
+                      ? `${detail.profile.rankNo}/${detail.profile.rankTotal}`
+                      : '-',
+                },
+                { key: 'phone', label: '手机', children: detail.profile?.phone || '-' },
+                { key: 'email', label: '邮箱', children: detail.profile?.email || '-' },
+              ]}
+            />
+
+            <Divider style={{ margin: '16px 0 12px' }} />
+            <Typography.Title level={5} style={{ marginBottom: 8 }}>
+              个人简介
+            </Typography.Title>
+            <Typography.Paragraph type={detail.profile?.intro ? undefined : 'secondary'}>
+              {detail.profile?.intro || '学生暂未填写个人简介'}
+            </Typography.Paragraph>
+
+            <Divider style={{ margin: '16px 0 12px' }} />
+            <Typography.Title level={5} style={{ marginBottom: 8 }}>
+              个人简历
+            </Typography.Title>
+            {detail.profile?.resume ? (
+              <Space size={10} wrap>
+                <Typography.Text strong>{detail.profile.resume.name}</Typography.Text>
+                <Typography.Text type="secondary">
+                  {detail.profile.resume.size
+                    ? `${Math.round(detail.profile.resume.size / 1024)} KB`
+                    : '-'}
+                </Typography.Text>
+                <Button size="small" icon={<DownloadOutlined />} onClick={() => void downloadStudentResume()}>
+                  查看 / 下载
+                </Button>
+              </Space>
+            ) : (
+              <Typography.Text type="secondary">学生尚未上传简历</Typography.Text>
+            )}
+
+            <Divider style={{ margin: '16px 0 12px' }} />
+            <Typography.Title level={5} style={{ marginBottom: 8 }}>
+              本轮志愿（{detail.intents.length}）
+            </Typography.Title>
+            <Space direction="vertical" size={6} style={{ width: '100%' }}>
+              {detail.intents.map((it: any, idx: number) => (
+                <div key={it.mentorId} className="detail-intent-row">
+                  <span>
+                    <Typography.Text type="secondary">{idx + 1}.</Typography.Text>{' '}
+                    <strong>{it.mentorName}</strong>
+                    {it.mentorTitle ? ` · ${it.mentorTitle}` : ''}
+                    <Typography.Text type="secondary">（{it.labName}）</Typography.Text>
+                  </span>
+                  {it.appliedToMe && <Tag color="blue">报我</Tag>}
+                </div>
+              ))}
+            </Space>
+
+            <Divider style={{ margin: '16px 0 12px' }} />
+            <Typography.Title level={5} style={{ marginBottom: 8 }}>
+              调剂意愿
+            </Typography.Title>
+            <Space size={6}>
+              {detail.application?.acceptLabAdjust && <Tag color="cyan">服从室内调剂</Tag>}
+              {detail.application?.acceptCollegeAdjust && <Tag color="geekblue">服从全院调剂</Tag>}
+              {!detail.application?.acceptLabAdjust && !detail.application?.acceptCollegeAdjust && <Tag>不服从调剂</Tag>}
+            </Space>
+
+            <Divider style={{ margin: '16px 0 12px' }} />
+            <Typography.Title level={5} style={{ marginBottom: 8 }}>
+              面试评分
+            </Typography.Title>
+            {!detail.interview ? (
+              <Alert type="warning" showIcon message="尚未评分" description="可在本页底部点击「去评分」完成打分。" />
+            ) : detail.interview.status === 'ABSENT' ? (
+              <Alert
+                type="error"
+                showIcon
+                message="已登记缺考"
+                description={detail.interview.remark || undefined}
+              />
+            ) : (
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Space size={6} wrap>
+                  <Tag>态度 {detail.interview.attitude}</Tag>
+                  <Tag>逻辑 {detail.interview.logic}</Tag>
+                  <Tag>编程 {detail.interview.coding}</Tag>
+                  <Tag>投入 {detail.interview.timeInvest}</Tag>
+                  <Tag color="green">总分 {detail.interview.total}</Tag>
+                </Space>
+                <Typography.Paragraph style={{ marginBottom: 0 }} type="secondary">
+                  评语：{detail.interview.remark || '无'}
+                  {detail.interview.scoredAt ? ` · 评分时间 ${formatTime(detail.interview.scoredAt)}` : ''}
+                </Typography.Paragraph>
+              </Space>
+            )}
+          </>
+        )}
+      </Drawer>
 
       <Modal
         open={Boolean(editing)}
