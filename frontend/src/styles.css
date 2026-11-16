@@ -124,16 +124,26 @@ body {
 
 /* ---------- 登录页 ---------- */
 .login-page {
+  position: relative;
+  overflow: hidden;
   display: grid;
   grid-template-columns: minmax(360px, 1fr) minmax(380px, 520px);
   min-height: 100vh;
+  background: linear-gradient(135deg, #8c94a3 0%, #04122b 45%, #0b2a5e 100%);
+}
+
+.login-smoke {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .login-side {
-  background:
-    radial-gradient(circle at 18% 12%, rgba(90, 132, 255, 0.35), transparent 45%),
-    radial-gradient(circle at 88% 82%, rgba(47, 91, 215, 0.32), transparent 40%),
-    linear-gradient(150deg, #101a2e 0%, #17264a 55%, #1b2f5c 100%);
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  background: transparent;
   color: #fff;
   display: flex;
   align-items: center;
@@ -141,16 +151,11 @@ body {
 }
 
 .login-side-inner {
+  position: relative;
+  z-index: 1;
   max-width: 460px;
   width: 100%;
   margin: 0 auto;
-}
-
-.login-eyebrow {
-  font-size: 12px;
-  letter-spacing: 2px;
-  color: #8fb0ff;
-  margin-bottom: 12px;
 }
 
 .login-side h1 {
@@ -164,49 +169,98 @@ body {
   color: #b9c7e4;
   font-size: 14px;
   line-height: 1.8;
-  margin: 0 0 24px;
-}
-
-.login-timeline {
-  color: #cbd8f2;
-}
-
-.login-timeline .ant-timeline-item-tail {
-  border-inline-start-color: rgba(255, 255, 255, 0.18);
-}
-
-.login-timeline .ant-timeline-item-content {
-  color: #cbd8f2 !important;
-  font-size: 13px;
-}
-
-.login-timeline .ant-timeline-item-head {
-  background: transparent;
+  margin: 0;
 }
 
 .login-main {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px 24px;
-  background: #fff;
+  background: transparent;
 }
 
 .login-card {
   width: 100%;
   max-width: 380px;
-  box-shadow: 0 18px 48px rgba(22, 39, 74, 0.12);
   border-radius: 14px;
+}
+
+.login-card.ant-card {
+  background: rgba(12, 28, 54, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 24px 64px rgba(2, 10, 26, 0.45);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.login-page .login-card .ant-typography {
+  color: #fff;
+}
+
+.login-page .login-card .ant-typography.ant-typography-secondary {
+  color: rgba(213, 226, 255, 0.72) !important;
+}
+
+.login-page .login-card .ant-form-item-label > label {
+  color: rgba(233, 240, 255, 0.9);
+}
+
+.login-page .login-card .ant-input-affix-wrapper,
+.login-page .login-card .ant-input-affix-wrapper:hover,
+.login-page .login-card .ant-input-affix-wrapper-focused,
+.login-page .login-card .ant-input-affix-wrapper-status-error,
+.login-page .login-card .ant-input-status-error {
+  background-color: rgba(4, 14, 32, 0.55) !important;
+}
+
+.login-page .login-card .ant-input-affix-wrapper {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.login-page .login-card .ant-input-affix-wrapper:hover,
+.login-page .login-card .ant-input-affix-wrapper-focused {
+  border-color: rgba(143, 176, 255, 0.6);
+}
+
+.login-page .login-card .ant-input-status-error,
+.login-page .login-card .ant-input-status-error:hover,
+.login-page .login-card .ant-input-status-error.ant-input-affix-wrapper-focused {
+  border-color: #ff7875;
+}
+
+.login-page .login-card input.ant-input {
+  background: transparent !important;
+  color: #fff !important;
+}
+
+.login-page .login-card input.ant-input::placeholder {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.login-page .login-card input.ant-input:-webkit-autofill,
+.login-page .login-card input.ant-input:-webkit-autofill:hover,
+.login-page .login-card input.ant-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fff !important;
+  caret-color: #fff;
+  box-shadow: 0 0 0 1000px #0a1a33 inset !important;
+  transition: background-color 9999s ease-out 0s;
+}
+
+.login-page .login-card .ant-input-prefix,
+.login-page .login-card .ant-input-password-icon {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.login-page .login-card .ant-input-password-icon:hover {
+  color: #fff;
 }
 
 .login-card h2 {
   margin: 0 0 4px;
   font-size: 22px;
-}
-
-.login-hint {
-  font-size: 12px;
-  margin-bottom: 20px !important;
 }
 
 .login-quick {

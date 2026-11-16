@@ -20,3 +20,6 @@ backend/.env
 
 # 学生上传的简历文件
 backend/uploads/
+
+# 本地参考素材
+webgl-cursor-fluid-smoke-main/
