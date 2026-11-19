@@ -30,17 +30,15 @@ export class MentorService {
 
   async applicants(user: AuthUser, roundNo: number) {
     const mentor = await this.getMentor(user);
-    const [intents, students, interviews, myIntents, apps, profiles] = await Promise.all([
-      this.prisma.intent.findMany({ where: { roundNo, labId: mentor.labId } }),
-      this.prisma.user.findMany({ where: { role: 'STUDENT', active: true } }),
-      this.prisma.interview.findMany({ where: { roundNo, labId: mentor.labId } }),
+    const [intents, students, interviews, apps, profiles] = await Promise.all([
       this.prisma.intent.findMany({ where: { roundNo, mentorId: mentor.id } }),
+      this.prisma.user.findMany({ where: { role: 'STUDENT', active: true } }),
+      this.prisma.interview.findMany({ where: { roundNo, mentorId: mentor.id } }),
       this.prisma.application.findMany({ where: { roundNo } }),
       this.prisma.studentProfile.findMany(),
     ]);
     const studentMap = new Map(students.map((s) => [s.id, s]));
     const interviewMap = new Map(interviews.map((i) => [i.studentId, i]));
-    const mySet = new Set(myIntents.map((i) => i.studentId));
     const appMap = new Map(apps.map((a) => [a.studentId, a]));
     const profileMap = new Map(profiles.map((p) => [p.studentId, p]));
 
@@ -55,8 +53,7 @@ export class MentorService {
         studentNo: s?.studentNo ?? '',
         major: profile?.major ?? '',
         className: profile?.className ?? '',
-        appliedToMe: mySet.has(i.studentId),
-        intentMentorCount: intents.filter((x) => x.studentId === i.studentId).length,
+        appliedToMe: true,
         acceptLabAdjust: app?.acceptLabAdjust ?? false,
         acceptCollegeAdjust: app?.acceptCollegeAdjust ?? false,
         interview: iv
@@ -89,9 +86,9 @@ export class MentorService {
   async studentDetail(user: AuthUser, studentId: string, roundNo: number) {
     const mentor = await this.getMentor(user);
     const intent = await this.prisma.intent.findFirst({
-      where: { roundNo, labId: mentor.labId, studentId },
+      where: { roundNo, mentorId: mentor.id, studentId },
     });
-    if (!intent) throw new BadRequestException('该学生未报名本实训室');
+    if (!intent) throw new BadRequestException('该学生未填报你');
 
     const [student, profile, app, intents] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: studentId } }),
@@ -105,7 +102,7 @@ export class MentorService {
       this.prisma.mentor.findMany({ where: { id: { in: intents.map((i) => i.mentorId) } } }),
       this.prisma.lab.findMany({ where: { id: { in: intents.map((i) => i.labId) } } }),
       this.prisma.interview.findUnique({
-        where: { roundNo_studentId_labId: { roundNo, studentId, labId: mentor.labId } },
+        where: { roundNo_studentId_mentorId: { roundNo, studentId, mentorId: mentor.id } },
       }),
     ]);
     const mentorMap = new Map(mentors.map((m) => [m.id, m]));
@@ -167,9 +164,9 @@ export class MentorService {
   async studentResume(user: AuthUser, studentId: string) {
     const mentor = await this.getMentor(user);
     const intent = await this.prisma.intent.findFirst({
-      where: { labId: mentor.labId, studentId },
+      where: { mentorId: mentor.id, studentId },
     });
-    if (!intent) throw new BadRequestException('该学生未报名本实训室');
+    if (!intent) throw new BadRequestException('该学生未填报你');
     const profile = await this.prisma.studentProfile.findUnique({ where: { studentId } });
     if (!profile?.resumeFile) throw new NotFoundException('该学生尚未上传简历');
     const absPath = resumeAbsolutePath(profile.resumeFile);
@@ -183,9 +180,9 @@ export class MentorService {
     const student = await this.prisma.user.findUnique({ where: { id: dto.studentId } });
     if (!student || student.role !== 'STUDENT') throw new NotFoundException('学生不存在');
     const intent = await this.prisma.intent.findFirst({
-      where: { roundNo: dto.roundNo, labId: mentor.labId, studentId: dto.studentId },
+      where: { roundNo: dto.roundNo, mentorId: mentor.id, studentId: dto.studentId },
     });
-    if (!intent) throw new BadRequestException('该学生未报名本实训室');
+    if (!intent) throw new BadRequestException('该学生未填报你');
 
     const weights = await this.meta.getWeights();
     let total: number | null = null;
@@ -216,13 +213,13 @@ export class MentorService {
     };
     const interview = await this.prisma.interview.upsert({
       where: {
-        roundNo_studentId_labId: {
+        roundNo_studentId_mentorId: {
           roundNo: dto.roundNo,
           studentId: dto.studentId,
-          labId: mentor.labId,
+          mentorId: mentor.id,
         },
       },
-      create: { roundNo: dto.roundNo, studentId: dto.studentId, labId: mentor.labId, ...data },
+      create: { roundNo: dto.roundNo, studentId: dto.studentId, mentorId: mentor.id, labId: mentor.labId, ...data },
       update: data,
     });
     await this.audit.log({
@@ -282,21 +279,21 @@ export class MentorService {
     const mentor = await this.getMentor(user);
     await this.time.assertOpen('INTERVIEW', dto.roundNo);
 
-    // 规则：本室所有报名学生必须完成面试（已评分或缺考登记）
-    const labIntents = await this.prisma.intent.findMany({
-      where: { roundNo: dto.roundNo, labId: mentor.labId },
+    // 规则：填报我的学生必须全部完成面试（已评分或缺考登记）；同室其他导师的学生互不阻塞
+    const myIntents = await this.prisma.intent.findMany({
+      where: { roundNo: dto.roundNo, mentorId: mentor.id },
     });
     const interviews = await this.prisma.interview.findMany({
-      where: { roundNo: dto.roundNo, labId: mentor.labId },
+      where: { roundNo: dto.roundNo, mentorId: mentor.id },
     });
     const scoredSet = new Set(
       interviews.filter((i) => i.status === 'SCORED' || i.status === 'ABSENT').map((i) => i.studentId),
     );
-    const missing = Array.from(new Set(labIntents.map((i) => i.studentId))).filter((id) => !scoredSet.has(id));
+    const missing = Array.from(new Set(myIntents.map((i) => i.studentId))).filter((id) => !scoredSet.has(id));
     if (missing.length > 0) {
       const students = await this.prisma.user.findMany({ where: { id: { in: missing } } });
       throw new BadRequestException(
-        `本实训室还有 ${missing.length} 名报名学生未完成面试评分（${students.map((s) => s.name).join('、')}），请先完成评分或登记缺考`,
+        `你还有 ${missing.length} 名填报你的学生未完成面试评分（${students.map((s) => s.name).join('、')}），请先完成评分或登记缺考`,
       );
     }
 
@@ -306,6 +303,7 @@ export class MentorService {
       primary: dto.primary || [],
       waitlist: dto.waitlist || [],
       labAdjustCandidates: dto.labAdjustCandidates,
+      labAdjustPrimary: dto.labAdjustPrimary,
       overQuotaConfirm: Boolean(dto.overQuotaConfirm),
       actor: user,
     });

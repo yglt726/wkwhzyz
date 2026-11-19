@@ -1,7 +1,7 @@
 import { Alert, App, Button, Card, Col, Empty, Row, Space, Statistic, Table, Tag, Typography } from 'antd';
 import { DownloadOutlined, PrinterOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
-import { api, errMsg, formatTime } from '../api';
+import { api, errMsg } from '../api';
 
 const LEVEL_LABEL: Record<number, string> = {
   1: 'L1 实训室内部调剂',
@@ -14,7 +14,11 @@ const LEVEL_RULES: Record<number, { tag: string; color: string; title: string; r
     tag: 'L1',
     color: 'blue',
     title: '实训室内部调剂',
-    rules: ['候选：本室有志愿，且勾选「服从室内调剂」仍未被录取', '排序：面试总分从高到低', '去重：同一学生在本室只被捞起一次'],
+    rules: [
+      '候选：勾选「服从室内调剂」、本轮至少有一位填报导师已打分、且仍未被录取',
+      '第一优先：优先去「给他打分最高」的导师；该导师满员时，再到他所在实训室里学生也报过、且仍有名额的导师',
+      '仍无去处：不在 L1 强行安置，留给 L2 全院统筹；高分学生优先选择',
+    ],
   },
   2: {
     tag: 'L2',
@@ -35,7 +39,7 @@ function exportCsv(rows: any[], message: ReturnType<typeof App.useApp>['message'
     message.warning('当前没有可导出的公示名单');
     return;
   }
-  const header = ['序号', '学号', '姓名', '实训室', '导师', '录取类型', '轮次', '超发', '自动确认', '确认时间'];
+  const header = ['序号', '学号', '姓名', '实训室', '导师', '录取类型', '轮次', '超发', '自动确认'];
   const body = rows.map((r: any, i: number) => [
     i + 1,
     r.studentNo ?? '',
@@ -46,7 +50,6 @@ function exportCsv(rows: any[], message: ReturnType<typeof App.useApp>['message'
     r.roundNo ?? '',
     r.overQuota ? '是' : '否',
     r.autoConfirmed ? '是' : '否',
-    r.decidedAt ? formatTime(r.decidedAt) : '',
   ]);
   const escape = (v: any) => `"${String(v).replace(/"/g, '""')}"`;
   const csv = [header, ...body].map((line) => line.map(escape).join(',')).join('\r\n');
@@ -54,7 +57,7 @@ function exportCsv(rows: any[], message: ReturnType<typeof App.useApp>['message'
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `实训室进组公示名单_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = '实训室进组公示名单.csv';
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -130,7 +133,7 @@ export default function AdminAdjustPage() {
           style={{ marginBottom: 16 }}
           type={publicity.open ? 'info' : publicity.phase === 'UPCOMING' ? 'warning' : 'success'}
           showIcon
-          message={`结果公示：${formatTime(publicity.startsAt)} ~ ${formatTime(publicity.endsAt)}（${publicity.phase === 'OPEN' ? '公示中' : publicity.phase === 'UPCOMING' ? '未开始' : '已结束'}）`}
+          message={`公示状态：${publicity.phase === 'OPEN' ? '公示中' : publicity.phase === 'UPCOMING' ? '未开始' : '已结束'}`}
           description="公示名单以下表「最终名单」为准；放弃记录单独留档，公示期异议可结合审计日志追溯。"
         />
       )}
@@ -180,7 +183,7 @@ export default function AdminAdjustPage() {
           })}
         </Row>
         <div className="muted-line" style={{ marginTop: 10 }}>
-          仅在 ADJUST 时间窗内可执行；建议按 L1 → L2 → L3 顺序并逐级查看结果，重复执行幂等（已录取学生自动跳过）。
+          建议按 L1 → L2 → L3 顺序并逐级查看结果，重复执行幂等（已录取学生自动跳过）。
         </div>
         <Space className="no-print" wrap style={{ marginTop: 12 }}>
           {[1, 2, 3].map((level) => (
@@ -203,7 +206,7 @@ export default function AdminAdjustPage() {
             type="success"
             showIcon
             style={{ marginBottom: 12 }}
-            message={`新增录取 ${result.assigned} 人 · 剩余名额 ${result.remainingFree} · 执行时间 ${formatTime(result.runAt)}`}
+            message={`新增录取 ${result.assigned} 人 · 剩余名额 ${result.remainingFree}`}
           />
           <Table
             rowKey="offerId"
@@ -268,7 +271,6 @@ export default function AdminAdjustPage() {
                 </Space>
               ),
             },
-            { title: '确认时间', dataIndex: 'decidedAt', width: 180, render: (v: string) => formatTime(v) },
           ]}
         />
       </Card>
@@ -308,7 +310,6 @@ export default function AdminAdjustPage() {
                     </Space>
                   ),
                 },
-                { title: '确认时间', dataIndex: 'decidedAt', render: (v: string) => formatTime(v) },
               ]}
             />
           </Card>
@@ -329,7 +330,6 @@ export default function AdminAdjustPage() {
             { title: '导师', dataIndex: 'mentorName', width: 100 },
             { title: '原因', dataIndex: 'reasonLabel', width: 140 },
             { title: '说明', dataIndex: 'detail' },
-            { title: '时间', dataIndex: 'createdAt', render: (v: string) => formatTime(v) },
           ]}
         />
       </Card>

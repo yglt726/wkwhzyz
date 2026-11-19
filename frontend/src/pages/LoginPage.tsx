@@ -29,23 +29,9 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <FluidSmoke className="login-smoke" />
-      <div className="login-side">
-        <div className="login-side-inner">
-          <h1>
-            选导师，
-            <br />
-            也选未来的方向。
-          </h1>
-          <p className="login-desc">
-            双向选择 · 3 个平行意向 · 分轮录取 · 室内/全院统筹调剂。
-            <br />
-            所有环节由服务端时间窗判定，先确认先锁定名额。
-          </p>
-        </div>
-      </div>
       <div className="login-main">
         <Card className="login-card" variant="borderless">
-          <Typography.Title level={3} style={{ marginBottom: 20 }}>
+          <Typography.Title level={3} className="login-card-title">
             登录选拔系统
           </Typography.Title>
           <Form form={form} layout="vertical" onFinish={(v) => doLogin(v.username, v.password)}>
@@ -56,10 +42,16 @@ export default function LoginPage() {
               <Input.Password size="large" prefix={<LockOutlined />} placeholder="请输入密码" />
             </Form.Item>
             <Button type="primary" htmlType="submit" size="large" block loading={loading}>
-              进入系统
+              登录
             </Button>
           </Form>
         </Card>
+        <div className="login-footer">
+          <div className="login-footer-title">软件学院202X年实训室志愿填报系统</div>
+          <div className="login-footer-desc">
+            双向选择 · 3 个平行意向 · 分轮录取 · 室内/全院统筹调剂
+          </div>
+        </div>
       </div>
     </div>
   );

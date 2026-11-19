@@ -159,12 +159,13 @@ CREATE INDEX idx_intents_round_student ON intents(round_no, student_id);
 CREATE INDEX idx_intents_mentor ON intents(mentor_id, round_no);
 
 -- ----------------------------------------------------------------------------
--- 4. 面试（以实训室为单位，全室共享一条面试记录）
+-- 4. 面试（每位导师独立评分；同一学生报同室多位导师时分别产生记录）
 -- ----------------------------------------------------------------------------
 CREATE TABLE interviews (
   id            text PRIMARY KEY DEFAULT gen_random_uuid()::text,
   round_no      integer NOT NULL REFERENCES rounds(round_no) ON DELETE RESTRICT,
   student_id    text NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  mentor_id     text NOT NULL REFERENCES mentors(id) ON DELETE RESTRICT,
   lab_id        text NOT NULL REFERENCES labs(id) ON DELETE RESTRICT,
   attitude      integer CHECK (attitude BETWEEN 0 AND 100),      -- 学习态度
   logic         integer CHECK (logic BETWEEN 0 AND 100),         -- 逻辑思维
@@ -176,10 +177,11 @@ CREATE TABLE interviews (
   scored_by     text REFERENCES users(id) ON DELETE SET NULL,
   scored_at     timestamptz,
   created_at    timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT uq_interview_student_lab_round UNIQUE (round_no, student_id, lab_id)
+  CONSTRAINT uq_interview_student_mentor_round UNIQUE (round_no, student_id, mentor_id)
 );
-COMMENT ON TABLE interviews IS '不论报名是否超额，所有报名学生均须参加面试；同室多导师共享评分';
+COMMENT ON TABLE interviews IS '每位导师独立评分：一名学生报同室多位导师时分别产生面试记录';
 
+CREATE INDEX idx_interviews_mentor_round ON interviews(mentor_id, round_no, status);
 CREATE INDEX idx_interviews_lab_round ON interviews(lab_id, round_no, status);
 CREATE INDEX idx_interviews_student ON interviews(student_id, round_no);
 

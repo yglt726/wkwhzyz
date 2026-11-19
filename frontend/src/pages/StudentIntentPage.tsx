@@ -18,7 +18,7 @@ import {
 } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
-import { api, errMsg, formatTime } from '../api';
+import { api, errMsg } from '../api';
 import { useAuth } from '../auth';
 
 const ROUND_OPTIONS = [
@@ -94,7 +94,7 @@ export default function StudentIntentPage() {
 
   const toggleMentor = (id: string) => {
     if (!isOpen) {
-      message.info('当前不在意向填报窗口，仅供查看');
+      message.info('当前阶段不可填报，仅供查看');
       return;
     }
     if (selected.includes(id)) {
@@ -121,7 +121,7 @@ export default function StudentIntentPage() {
         acceptLabAdjust: labAdjust,
         acceptCollegeAdjust: collegeAdjust,
       });
-      message.success('意向已提交，可在窗口内重新填报');
+      message.success('意向已提交，本阶段内可重新填报');
       await load(roundNo);
     } catch (e) {
       message.error(errMsg(e));
@@ -150,15 +150,15 @@ export default function StudentIntentPage() {
         showIcon
         message={
           isOpen
-            ? `意向填报开放中：${formatTime(intentWindow?.startsAt)} ~ ${formatTime(intentWindow?.endsAt)}`
+            ? '意向填报开放中：请选择导师并提交'
             : intentWindow
-              ? `当前不在填报窗口：${formatTime(intentWindow.startsAt)} ~ ${formatTime(intentWindow.endsAt)}`
-              : '该轮尚未配置填报时间窗'
+              ? '当前阶段不可填报，仅供查看'
+              : '该轮填报尚未开放'
         }
         description={
           isOpen
-            ? '三个意向为平行志愿，不分先后；提交后可在窗口内改填。服务端会校验单轮上限、重复导师与窗口时间。'
-            : '窗口关闭后本页仅供查阅，提交会被服务端拒绝。'
+            ? '三个意向为平行志愿，不分先后；提交后在本阶段内可改填。服务端会校验单轮上限与重复导师。'
+            : '阶段关闭后本页仅供查阅，提交会被服务端拒绝。'
         }
       />
 
@@ -313,7 +313,7 @@ export default function StudentIntentPage() {
                 </Button>
                 {myIntents?.submitted && (
                   <div className="muted-line" style={{ marginTop: 8, textAlign: 'center' }}>
-                    最近提交：{formatTime(myIntents.application.updatedAt)}，窗口内可继续改填
+                    已提交，本阶段内可继续改填
                   </div>
                 )}
               </Card>

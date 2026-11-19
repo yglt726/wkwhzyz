@@ -20,8 +20,8 @@ function Guard({ role, children }: { role: string; children: React.ReactNode }) 
 }
 
 function RootRedirect() {
-  const { user } = useAuth();
-  return <Navigate to={user ? homeOf(user.role) : '/login'} replace />;
+  // 固定进入登录页：即使本地还存着上次的登录态，也不自动跳转到业务页
+  return <Navigate to="/login" replace />;
 }
 
 const STUDENT_MENUS = [

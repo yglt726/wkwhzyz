@@ -1,6 +1,6 @@
 import { Alert, App, Button, Card, Empty, Space, Table, Tabs, Tag, Typography } from 'antd';
 import { useEffect, useState } from 'react';
-import { api, errMsg, formatTime } from '../api';
+import { api, errMsg } from '../api';
 
 const TYPE_LABEL: Record<string, string> = {
   OVER_QUOTA: '超录',
@@ -113,7 +113,6 @@ export default function AdminAuditPage() {
                       width: 90,
                       render: (v: boolean) => (v ? <Tag color="green">已处理</Tag> : <Tag color="red">未处理</Tag>),
                     },
-                    { title: '时间', dataIndex: 'createdAt', width: 170, render: (v: string) => formatTime(v) },
                     {
                       title: '操作',
                       width: 90,
@@ -147,7 +146,6 @@ export default function AdminAuditPage() {
                     ),
                   }}
                   columns={[
-                    { title: '时间', dataIndex: 'createdAt', width: 170, render: (v: string) => formatTime(v) },
                     { title: '操作人', dataIndex: 'actorName', width: 110 },
                     { title: '角色', dataIndex: 'actorRole', width: 90, render: (v: string) => <Tag>{v}</Tag> },
                     { title: '动作', dataIndex: 'action', width: 190, render: (v: string) => <Tag color="blue">{v}</Tag> },

@@ -34,22 +34,67 @@ export class OfferService {
     private readonly audit: AuditService,
   ) {}
 
-  /** 系统自动生成的室内调剂候选：本室服从室内调剂、尚未确认去向的学生，按面试总分降序 */
-  async autoLabAdjustCandidates(labId: string, roundNo: number) {
+  /**
+   * 系统自动生成的室内调剂候选：本室服从室内调剂、尚未被任何导师占用的学生。
+   * keepMentorId 用于导师端展示：保留该导师自己尚未生效的预占，便于重提时看到评分。
+   */
+  async autoLabAdjustCandidates(labId: string, roundNo: number, keepMentorId?: string) {
     const [intents, interviews, apps, placed, pendingOffers] = await Promise.all([
       this.prisma.intent.findMany({ where: { roundNo, labId } }),
       this.prisma.interview.findMany({ where: { roundNo, labId } }),
       this.prisma.application.findMany({ where: { roundNo } }),
       this.prisma.offer.findMany({ where: { status: 'CONFIRMED' }, select: { studentId: true } }),
       this.prisma.offer.findMany({
-        where: { roundNo, status: 'PENDING', kind: { in: ['PRIMARY', 'WAITLIST'] } },
-        select: { studentId: true },
+        where: { roundNo, status: 'PENDING' },
+        select: { studentId: true, mentorId: true, kind: true },
       }),
     ]);
     const placedSet = new Set(placed.map((p) => p.studentId));
-    const pendingSet = new Set(pendingOffers.map((p) => p.studentId));
+    // 除“导师自己的室内调剂预占”外，任何待确认记录都视为已占用，不再列为候选
+    const pendingSet = new Set(
+      pendingOffers
+        .filter(
+          (p) => !(keepMentorId && p.mentorId === keepMentorId && p.kind === 'LAB_ADJUST'),
+        )
+        .map((p) => p.studentId),
+    );
     const appMap = new Map(apps.map((a) => [a.studentId, a]));
-    const interviewMap = new Map(interviews.map((i) => [i.studentId, i]));
+
+    const mentorIds = Array.from(new Set(interviews.map((i) => i.mentorId)));
+    const mentorList = await this.prisma.mentor.findMany({ where: { id: { in: mentorIds } } });
+    const mentorMap = new Map(mentorList.map((m) => [m.id, m.name]));
+
+    // 同室多位导师可能分别评分：候选行保留每个人的分项和评语，排序取本室最高分
+    const scoresByStudent = new Map<
+      string,
+      Array<{
+        mentorId: string;
+        mentorName: string;
+        attitude: number | null;
+        logic: number | null;
+        coding: number | null;
+        timeInvest: number | null;
+        total: number;
+        remark: string;
+      }>
+    >();
+    for (const i of interviews) {
+      if (i.total == null) continue;
+      const list = scoresByStudent.get(i.studentId) ?? [];
+      list.push({
+        mentorId: i.mentorId,
+        mentorName: mentorMap.get(i.mentorId) ?? '',
+        attitude: i.attitude,
+        logic: i.logic,
+        coding: i.coding,
+        timeInvest: i.timeInvest,
+        total: i.total,
+        remark: i.remark,
+      });
+      scoresByStudent.set(i.studentId, list);
+    }
+    for (const list of scoresByStudent.values()) list.sort((a, b) => b.total - a.total);
+
     const ids = Array.from(new Set(intents.map((i) => i.studentId))).filter((id) => {
       if (!appMap.get(id)?.acceptLabAdjust) return false;
       return !placedSet.has(id) && !pendingSet.has(id);
@@ -61,7 +106,8 @@ export class OfferService {
         studentId: id,
         studentName: studentMap.get(id)?.name ?? '',
         studentNo: studentMap.get(id)?.studentNo ?? '',
-        total: interviewMap.get(id)?.total ?? null,
+        total: scoresByStudent.get(id)?.[0]?.total ?? null,
+        scores: scoresByStudent.get(id) ?? [],
         submittedAt: appMap.get(id)?.submittedAt ?? null,
       }))
       .sort((a, b) => {
@@ -73,6 +119,7 @@ export class OfferService {
         studentName: x.studentName,
         studentNo: x.studentNo,
         total: x.total,
+        scores: x.scores,
         rank: i + 1,
       }));
   }
@@ -80,7 +127,7 @@ export class OfferService {
   /** 导师端展示用：自动候选 + 已提交顺位 + 生效顺序 */
   async labAdjustCandidateView(mentorId: string, labId: string, roundNo: number) {
     const [auto, saved] = await Promise.all([
-      this.autoLabAdjustCandidates(labId, roundNo),
+      this.autoLabAdjustCandidates(labId, roundNo, mentorId),
       this.prisma.labAdjustCandidate.findMany({
         where: { roundNo, mentorId },
         orderBy: { rank: 'asc' },
@@ -187,6 +234,7 @@ export class OfferService {
     primary: string[];
     waitlist: string[];
     labAdjustCandidates?: string[];
+    labAdjustPrimary?: string[];
     overQuotaConfirm: boolean;
     actor: AuthUser;
   }) {
@@ -200,7 +248,8 @@ export class OfferService {
 
     const primary = Array.from(new Set(params.primary || []));
     const waitlist = Array.from(new Set(params.waitlist || []));
-    if (primary.length === 0 && waitlist.length === 0) {
+    const labAdjustPrimary = Array.from(new Set(params.labAdjustPrimary ?? []));
+    if (primary.length === 0 && waitlist.length === 0 && labAdjustPrimary.length === 0) {
       throw new BadRequestException('请至少选择 1 名学生');
     }
     const overlap = primary.filter((id) => waitlist.includes(id));
@@ -219,7 +268,7 @@ export class OfferService {
     const intentSet = new Set(intents.map((i) => i.studentId));
     const notApplied = allIds.filter((id) => !intentSet.has(id)).map((id) => nameMap.get(id) || id);
     if (notApplied.length) {
-      throw new BadRequestException(`以下学生未在${roundNo}轮填报你：${notApplied.join('、')}`);
+      throw new BadRequestException(`以下学生未在第 ${roundNo} 轮填报你：${notApplied.join('、')}`);
     }
 
     // 已确认去向的学生不能再次被拟录取（由导师移除，不阻塞整批）
@@ -273,9 +322,52 @@ export class OfferService {
       }
     }
 
+    // 室内调剂直接录取：只能捞本室服从调剂、尚未被其他导师占用的学生
+    const labAdjustName = new Map<string, string>();
+    if (labAdjustPrimary.length > 0) {
+      const pickConflict = labAdjustPrimary
+        .filter((id) => primaryEff.includes(id) || waitlistEff.includes(id))
+        .map((id) => nameMap.get(id) || id);
+      if (pickConflict.length) {
+        throw new BadRequestException(`室内调剂录取不能与拟录取/递补名单重复：${pickConflict.join('、')}`);
+      }
+      const [pickUsers, pickIntents, pickApps, pickPlaced] = await Promise.all([
+        this.prisma.user.findMany({
+          where: { id: { in: labAdjustPrimary }, role: 'STUDENT', active: true },
+        }),
+        this.prisma.intent.findMany({
+          where: { roundNo, labId: mentor.labId, studentId: { in: labAdjustPrimary } },
+        }),
+        this.prisma.application.findMany({ where: { roundNo, studentId: { in: labAdjustPrimary } } }),
+        this.prisma.offer.findMany({
+          where: { studentId: { in: labAdjustPrimary }, status: 'CONFIRMED' },
+          select: { studentId: true },
+        }),
+      ]);
+      if (pickUsers.length !== labAdjustPrimary.length) throw new BadRequestException('存在无效的学生账号');
+      for (const u of pickUsers) labAdjustName.set(u.id, u.name);
+      const inLab = new Set(pickIntents.map((i) => i.studentId));
+      const outside = labAdjustPrimary.filter((id) => !inLab.has(id)).map((id) => labAdjustName.get(id) || id);
+      if (outside.length) {
+        throw new BadRequestException(`室内调剂录取必须属于本实训室本轮报名学生：${outside.join('、')}`);
+      }
+      const consent = new Map(pickApps.map((a) => [a.studentId, a.acceptLabAdjust]));
+      const noConsent = labAdjustPrimary.filter((id) => !consent.get(id)).map((id) => labAdjustName.get(id) || id);
+      if (noConsent.length) {
+        throw new BadRequestException(`以下学生未勾选服从室内调剂，不能直接录取：${noConsent.join('、')}`);
+      }
+      const confirmedSet = new Set(pickPlaced.map((p) => p.studentId));
+      const alreadyPlaced = labAdjustPrimary
+        .filter((id) => confirmedSet.has(id))
+        .map((id) => labAdjustName.get(id) || id);
+      if (alreadyPlaced.length) {
+        throw new BadRequestException(`以下学生已有确认去向，不能直接录取：${alreadyPlaced.join('、')}`);
+      }
+    }
+
     // 重提：仅允许覆盖尚未生效的名单
     const existing = await this.prisma.offer.findMany({
-      where: { mentorId: mentor.id, roundNo, kind: { in: ['PRIMARY', 'WAITLIST'] } },
+      where: { mentorId: mentor.id, roundNo, kind: { in: ['PRIMARY', 'WAITLIST', 'LAB_ADJUST'] } },
     });
     if (existing.length > 0) {
       const locked = existing.filter((o) => o.status !== 'PENDING' || o.note === 'WAITLIST_PROMOTED');
@@ -285,28 +377,44 @@ export class OfferService {
       if (locked.length > 0 || confirmCount > 0) {
         throw new ConflictException('该轮名单已生效（存在已确认/已拒绝/已递补记录），不能重新提交');
       }
-      await this.prisma.offer.deleteMany({ where: { id: { in: existing.map((o) => o.id) } } });
-      await this.audit.log({
-        actor,
-        action: 'OFFERS_REPUBLISH',
-        entityType: 'MENTOR',
-        entityId: mentor.id,
-        detail: { roundNo, deleted: existing.length },
-      });
     }
 
+    // 排除被其他导师抢先预占的室内调剂人选（自己的旧记录会在下面整体替换）
+    const pendingPick = labAdjustPrimary.length
+      ? await this.prisma.offer.findMany({
+          where: {
+            studentId: { in: labAdjustPrimary },
+            status: 'PENDING',
+            mentorId: { not: mentor.id },
+          },
+          select: { studentId: true },
+        })
+      : [];
+    const pendingPickSet = new Set(pendingPick.map((p) => p.studentId));
+    const skippedLabAdjust = labAdjustPrimary
+      .filter((id) => pendingPickSet.has(id))
+      .map((id) => labAdjustName.get(id) || id);
+    const labAdjustPrimaryEff = labAdjustPrimary.filter((id) => !pendingPickSet.has(id));
+
+    // 先做超发判定，再删除旧名单：避免超发取消后旧名单已被清空
     const quotaInfo = await this.getQuota(mentor.id, roundNo);
-    const projected = quotaInfo.confirmed + quotaInfo.pending + primaryEff.length;
+    const replacedPending = existing.filter(
+      (o) => o.status === 'PENDING' && o.kind !== 'WAITLIST',
+    ).length;
+    const basePending = Math.max(0, quotaInfo.pending - replacedPending);
+    const projected =
+      quotaInfo.confirmed + basePending + primaryEff.length + labAdjustPrimaryEff.length;
     const overQuota = projected > mentor.quota;
     if (overQuota && !params.overQuotaConfirm) {
       throw new ConflictException({
         code: 'OVER_QUOTA_CONFIRM_REQUIRED',
-        message: `拟录取将超发：名额 ${mentor.quota}，已确认 ${quotaInfo.confirmed}，待确认预占 ${quotaInfo.pending}，本次拟录取 ${primaryEff.length}，合计 ${projected}。超发需二次确认。`,
+        message: `拟录取将超发：名额 ${mentor.quota}，已确认 ${quotaInfo.confirmed}，其他待确认预占 ${basePending}，本次拟录取 ${primaryEff.length} 人、室内调剂 ${labAdjustPrimaryEff.length} 人，合计 ${projected}。超发需二次确认。`,
         data: {
           quota: mentor.quota,
           confirmed: quotaInfo.confirmed,
-          pending: quotaInfo.pending,
-          adding: primaryEff.length,
+          pending: basePending,
+          adding: primaryEff.length + labAdjustPrimaryEff.length,
+          labAdjustAdding: labAdjustPrimaryEff.length,
           projected,
           overRatio: mentor.quota > 0 ? Number((projected / mentor.quota - 1).toFixed(3)) : 0,
         },
@@ -319,7 +427,25 @@ export class OfferService {
         action: 'OFFER_OVER_QUOTA',
         entityType: 'MENTOR',
         entityId: mentor.id,
-        detail: { roundNo, quota: mentor.quota, confirmed: quotaInfo.confirmed, pending: quotaInfo.pending, adding: primaryEff.length },
+        detail: {
+          roundNo,
+          quota: mentor.quota,
+          confirmed: quotaInfo.confirmed,
+          pending: quotaInfo.pending,
+          adding: primaryEff.length,
+          labAdjustAdding: labAdjustPrimaryEff.length,
+        },
+      });
+    }
+
+    if (existing.length > 0) {
+      await this.prisma.offer.deleteMany({ where: { id: { in: existing.map((o) => o.id) } } });
+      await this.audit.log({
+        actor,
+        action: 'OFFERS_REPUBLISH',
+        entityType: 'MENTOR',
+        entityId: mentor.id,
+        detail: { roundNo, deleted: existing.length },
       });
     }
 
@@ -340,7 +466,7 @@ export class OfferService {
             labId: mentor.labId,
             kind: 'PRIMARY',
             status: 'PENDING',
-            overQuota: quotaInfo.confirmed + quotaInfo.pending + i + 1 > mentor.quota,
+            overQuota: quotaInfo.confirmed + basePending + i + 1 > mentor.quota,
             expiresAt: confirmWin.endsAt,
             note: '',
           },
@@ -357,6 +483,48 @@ export class OfferService {
         entityType: 'OFFER',
         entityId: offer.id,
         detail: { roundNo, studentId, mentorId: mentor.id, kind: 'PRIMARY' },
+      });
+    }
+
+    const createdLabAdjust: Offer[] = [];
+    for (const studentId of labAdjustPrimaryEff) {
+      const offer = await this.lock.withLock(`student:${studentId}:offer`, async () => {
+        // 先到先得：已被任何导师确认或预占的学生直接跳过
+        const occupied = await this.prisma.offer.findFirst({
+          where: { studentId, status: { in: ['CONFIRMED', 'PENDING'] } },
+        });
+        if (occupied) return null;
+        return this.prisma.offer.create({
+          data: {
+            roundNo,
+            studentId,
+            mentorId: mentor.id,
+            labId: mentor.labId,
+            kind: 'LAB_ADJUST',
+            status: 'PENDING',
+            overQuota:
+              quotaInfo.confirmed +
+                basePending +
+                createdPrimary.length +
+                createdLabAdjust.length +
+                1 >
+              mentor.quota,
+            expiresAt: confirmWin.endsAt,
+            note: 'MENTOR_LAB_ADJUST',
+          },
+        });
+      });
+      if (!offer) {
+        skippedLabAdjust.push(labAdjustName.get(studentId) || studentId);
+        continue;
+      }
+      createdLabAdjust.push(offer);
+      await this.audit.log({
+        actor,
+        action: 'OFFER_CREATED',
+        entityType: 'OFFER',
+        entityId: offer.id,
+        detail: { roundNo, studentId, mentorId: mentor.id, kind: 'LAB_ADJUST' },
       });
     }
 
@@ -392,14 +560,19 @@ export class OfferService {
       }),
       this.autoLabAdjustCandidates(mentor.labId, roundNo),
     ]);
+    // 已被直接录取的学生不再作为候选顺位保存
+    const orderingIds = candidateIds.filter((id) => !labAdjustPrimary.includes(id));
+    const autoOrdering = autoCandidates
+      .map((c) => c.studentId)
+      .filter((id) => !labAdjustPrimary.includes(id));
     const previousOrder = previousSaved.length
       ? previousSaved.map((c) => c.studentId)
-      : autoCandidates.map((c) => c.studentId);
+      : autoOrdering;
     // 未提交候选时按自动顺序生效，审计记录的实际生效顺序与行为保持一致
-    const afterOrder = candidateIds.length ? candidateIds : autoCandidates.map((c) => c.studentId);
+    const afterOrder = orderingIds.length ? orderingIds : autoOrdering;
     await this.prisma.$transaction([
       this.prisma.labAdjustCandidate.deleteMany({ where: { roundNo, mentorId: mentor.id } }),
-      ...candidateIds.map((studentId, i) =>
+      ...orderingIds.map((studentId, i) =>
         this.prisma.labAdjustCandidate.create({
           data: { roundNo, labId: mentor.labId, mentorId: mentor.id, studentId, rank: i + 1 },
         }),
@@ -424,7 +597,7 @@ export class OfferService {
     // 确认窗已开放时，单 offer 立即生效（实时自动确认）
     const autoConfirmed: string[] = [];
     if (await this.time.isOpen('CONFIRM', roundNo)) {
-      for (const o of createdPrimary) {
+      for (const o of [...createdPrimary, ...createdLabAdjust]) {
         const confirmed = await this.autoConfirmIfSingle(o.studentId, roundNo);
         if (confirmed) autoConfirmed.push(o.studentId);
       }
@@ -439,9 +612,11 @@ export class OfferService {
         roundNo,
         primary: createdPrimary.length,
         waitlist: waitlistEff.length,
-        labAdjustCandidates: candidateIds.length,
+        labAdjustCandidates: orderingIds.length,
+        labAdjustPrimary: createdLabAdjust.length,
         autoConfirmed,
         skippedPlaced: finalSkipped,
+        skippedLabAdjust,
         overQuota,
       },
     });
@@ -449,9 +624,11 @@ export class OfferService {
     return {
       primary: createdPrimary.length,
       waitlist: waitlistEff.length,
-      labAdjustCandidates: candidateIds.length,
+      labAdjustCandidates: orderingIds.length,
+      labAdjustPrimary: createdLabAdjust.length,
       autoConfirmed,
       skippedPlaced: finalSkipped,
+      skippedLabAdjust,
       overQuota,
       quota: await this.getQuota(mentor.id, roundNo),
     };

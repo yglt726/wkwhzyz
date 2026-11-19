@@ -155,13 +155,7 @@ export default function StudentOffersPage() {
           type="info"
           showIcon
           message="本轮拟录取结果尚未公布"
-          description={
-            data?.confirmWindow
-              ? `结果将在 ${formatTime(data.confirmWindow.startsAt)} 公布，确认窗口 ${formatTime(
-                  data.confirmWindow.startsAt,
-                )} ~ ${formatTime(data.confirmWindow.endsAt)}。`
-              : '确认时间窗未配置，请联系管理员。'
-          }
+          description="管理员把进度切到「学生确认」后，这里会显示拟录取结果；仅收到 1 个拟录取时系统会自动确认。"
         />
       )}
 
@@ -175,8 +169,7 @@ export default function StudentOffersPage() {
                 {data.placement.labName} / {data.placement.mentorName}
               </div>
               <div className="placement-meta">
-                {data.placement.kindLabel} · 第 {data.placement.roundNo} 轮 · 确认时间{' '}
-                {formatTime(data.placement.decidedAt)}
+                {data.placement.kindLabel} · 第 {data.placement.roundNo} 轮
               </div>
             </div>
           </Space>
@@ -192,7 +185,7 @@ export default function StudentOffersPage() {
               </div>
               <div className="hero-digits">{formatCountdown(heroRemain)}</div>
               <div className="hero-sub">
-                最早截止 {formatTime(earliest?.expiresAt)} · 你还有 <strong>{pending.length}</strong> 个待确认意向
+                你还有 <strong>{pending.length}</strong> 个待确认意向，确认其中一个后其余将立即失效
               </div>
             </div>
             <div className="confirm-hero-side">
@@ -235,7 +228,7 @@ export default function StudentOffersPage() {
                         </div>
                         <div className="countdown-value">{formatCountdown(remainMs)}</div>
                       </div>
-                      <div className="countdown-deadline">截止 {formatTime(offer.expiresAt)}</div>
+                      <div className="countdown-deadline">请尽快确认</div>
                     </div>
                     <Alert
                       type="warning"
@@ -349,11 +342,6 @@ export default function StudentOffersPage() {
                 render: (_: any, r: any) =>
                   r.overQuota ? <Tag color="red">超发</Tag> : <Tag color="green">名额内</Tag>,
               },
-              {
-                title: '截止',
-                width: 170,
-                render: (_: any, r: any) => formatTime(r.expiresAt),
-              },
             ]}
           />
 
@@ -367,10 +355,6 @@ export default function StudentOffersPage() {
             <div className="confirm-target-row">
               <span>意向类型</span>
               <span>{target?.kindLabel}</span>
-            </div>
-            <div className="confirm-target-row">
-              <span>确认截止</span>
-              <span>{formatTime(target?.expiresAt)}</span>
             </div>
           </Card>
 

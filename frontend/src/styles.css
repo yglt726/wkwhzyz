@@ -126,9 +126,11 @@ body {
 .login-page {
   position: relative;
   overflow: hidden;
-  display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(380px, 520px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 100vh;
+  padding: 40px 24px;
   background: linear-gradient(135deg, #8c94a3 0%, #04122b 45%, #0b2a5e 100%);
 }
 
@@ -139,73 +141,90 @@ body {
   pointer-events: none;
 }
 
-.login-side {
-  position: relative;
-  z-index: 1;
-  overflow: hidden;
-  background: transparent;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  padding: 48px;
-}
-
-.login-side-inner {
-  position: relative;
-  z-index: 1;
-  max-width: 460px;
-  width: 100%;
-  margin: 0 auto;
-}
-
-.login-side h1 {
-  font-size: 30px;
-  line-height: 1.35;
-  margin: 0 0 14px;
-  font-weight: 700;
-}
-
-.login-desc {
-  color: #b9c7e4;
-  font-size: 14px;
-  line-height: 1.8;
-  margin: 0;
-}
-
 .login-main {
   position: relative;
   z-index: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 24px;
+  width: 100%;
+  max-width: 580px;
   background: transparent;
 }
 
 .login-card {
   width: 100%;
-  max-width: 380px;
-  border-radius: 14px;
+  max-width: 580px;
+  border-radius: 18px;
+}
+
+.login-footer {
+  position: absolute;
+  top: calc(100% + 30px);
+  left: 0;
+  right: 0;
+  text-align: center;
+}
+
+.login-footer-title {
+  color: #fff;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: 1px;
+}
+
+.login-footer-desc {
+  margin-top: 8px;
+  color: #b9c7e4;
+  font-size: 13px;
 }
 
 .login-card.ant-card {
-  background: rgba(12, 28, 54, 0.38);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 24px 64px rgba(2, 10, 26, 0.45);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 24px 64px rgba(2, 10, 26, 0.35);
+}
+
+.login-page .login-card .ant-card-body {
+  padding: 18px 48px 30px;
+}
+
+.login-page .login-card .login-card-title.ant-typography {
+  margin-bottom: 14px !important;
+  font-size: 28px;
+  text-align: center;
+}
+
+.login-page .login-card .ant-form-item {
+  margin-bottom: 14px;
+}
+
+.login-page .login-card .ant-input-affix-wrapper {
+  padding: 11px 14px;
+  border-radius: 10px;
+}
+
+.login-page .login-card input.ant-input {
+  font-size: 15px;
+}
+
+.login-page .login-card .ant-btn-lg {
+  height: 48px;
+  border-radius: 10px;
+  font-size: 16px;
 }
 
 .login-page .login-card .ant-typography {
-  color: #fff;
+  color: #1f2329;
 }
 
 .login-page .login-card .ant-typography.ant-typography-secondary {
-  color: rgba(213, 226, 255, 0.72) !important;
+  color: #6b7280 !important;
 }
 
 .login-page .login-card .ant-form-item-label > label {
-  color: rgba(233, 240, 255, 0.9);
+  color: #3d4450;
 }
 
 .login-page .login-card .ant-input-affix-wrapper,
@@ -213,16 +232,16 @@ body {
 .login-page .login-card .ant-input-affix-wrapper-focused,
 .login-page .login-card .ant-input-affix-wrapper-status-error,
 .login-page .login-card .ant-input-status-error {
-  background-color: rgba(4, 14, 32, 0.55) !important;
+  background-color: #f6f7f9 !important;
 }
 
 .login-page .login-card .ant-input-affix-wrapper {
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: #dcdfe4;
 }
 
 .login-page .login-card .ant-input-affix-wrapper:hover,
 .login-page .login-card .ant-input-affix-wrapper-focused {
-  border-color: rgba(143, 176, 255, 0.6);
+  border-color: #2f5bd7;
 }
 
 .login-page .login-card .ant-input-status-error,
@@ -233,29 +252,29 @@ body {
 
 .login-page .login-card input.ant-input {
   background: transparent !important;
-  color: #fff !important;
+  color: #1f2329 !important;
 }
 
 .login-page .login-card input.ant-input::placeholder {
-  color: rgba(255, 255, 255, 0.38);
+  color: #a3a9b3;
 }
 
 .login-page .login-card input.ant-input:-webkit-autofill,
 .login-page .login-card input.ant-input:-webkit-autofill:hover,
 .login-page .login-card input.ant-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #fff !important;
-  caret-color: #fff;
-  box-shadow: 0 0 0 1000px #0a1a33 inset !important;
+  -webkit-text-fill-color: #1f2329 !important;
+  caret-color: #1f2329;
+  box-shadow: 0 0 0 1000px #f6f7f9 inset !important;
   transition: background-color 9999s ease-out 0s;
 }
 
 .login-page .login-card .ant-input-prefix,
 .login-page .login-card .ant-input-password-icon {
-  color: rgba(255, 255, 255, 0.55);
+  color: #98a0ac;
 }
 
 .login-page .login-card .ant-input-password-icon:hover {
-  color: #fff;
+  color: #2f5bd7;
 }
 
 .login-card h2 {
@@ -832,11 +851,11 @@ body {
 /* ---------- 响应式 ---------- */
 @media (max-width: 900px) {
   .login-page {
-    grid-template-columns: 1fr;
+    padding: 28px 16px;
   }
 
-  .login-side {
-    display: none;
+  .login-page .login-card .ant-card-body {
+    padding: 32px 24px 28px;
   }
 
   .app-content {

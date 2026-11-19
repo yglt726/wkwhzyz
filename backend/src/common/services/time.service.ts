@@ -57,16 +57,14 @@ export class TimeService {
 
   async assertOpen(stageKey: string, roundNo = 0): Promise<StageWindow> {
     const w = await this.getWindow(stageKey, roundNo);
-    if (!w) throw new ForbiddenException(`环节「${STAGE_LABELS[stageKey] || stageKey}」尚未配置时间窗`);
+    if (!w) throw new ForbiddenException(`环节「${STAGE_LABELS[stageKey] || stageKey}」尚未开放`);
     const now = await this.getNow();
     if (now < w.startsAt || now > w.endsAt) {
       throw new ForbiddenException({
         code: 'TIME_WINDOW_CLOSED',
-        message: `当前不在「${STAGE_LABELS[stageKey] || stageKey}」时间窗内（${formatCN(w.startsAt)} ~ ${formatCN(w.endsAt)}）`,
+        message: `当前进度不在「${STAGE_LABELS[stageKey] || stageKey}」阶段，该操作暂未开放`,
         stageKey,
         roundNo,
-        startsAt: w.startsAt,
-        endsAt: w.endsAt,
       });
     }
     return w;
@@ -75,7 +73,7 @@ export class TimeService {
   async assertAnyOpen(list: Array<{ stageKey: string; roundNo: number }>): Promise<void> {
     if (!(await this.isAnyOpen(list))) {
       const names = list.map((i) => STAGE_LABELS[i.stageKey] || i.stageKey).join(' / ');
-      throw new ForbiddenException(`当前不在「${names}」时间窗内，操作被服务端拒绝`);
+      throw new ForbiddenException(`当前进度不在「${names}」任一阶段，该操作暂未开放`);
     }
   }
 
@@ -127,7 +125,7 @@ export class TimeService {
 
   async roundConfirmWindow(roundNo: number): Promise<StageWindow> {
     const w = await this.getWindow('CONFIRM', roundNo);
-    if (!w) throw new NotFoundException(`第 ${roundNo} 轮确认时间窗未配置`);
+    if (!w) throw new NotFoundException(`第 ${roundNo} 轮确认环节尚未配置`);
     return w;
   }
 

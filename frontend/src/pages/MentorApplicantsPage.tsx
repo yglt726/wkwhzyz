@@ -169,7 +169,7 @@ export default function MentorApplicantsPage() {
       if (mode === 'next') {
         const next = nextRowOf(editing.studentId, latestRows);
         if (!next) {
-          message.success(`已保存 ${editing.name}，本室全部学生已完成评分`);
+          message.success(`已保存 ${editing.name}，填报我的学生已全部完成评分`);
           setEditing(null);
         } else {
           message.success(`已保存 ${editing.name}，还剩 ${left} 人待评分`);
@@ -210,7 +210,7 @@ export default function MentorApplicantsPage() {
             面试评分
           </Typography.Title>
           <Typography.Text type="secondary">
-            {data?.labName} · {user?.name} · 本实训室所有报名学生均须参加面试，同室导师共享评分。
+            {data?.labName} · {user?.name} · 只显示填报我的学生；同一学生报同室多位导师时，各位导师分别独立打分，互不覆盖。
           </Typography.Text>
         </div>
         <Segmented options={ROUND_OPTIONS} value={roundNo} onChange={(v) => setRoundNo(v as number)} />
@@ -222,12 +222,12 @@ export default function MentorApplicantsPage() {
         showIcon
         message={
           interviewOpen
-            ? `面试考核进行中：${formatTime(interviewWindow?.startsAt)} ~ ${formatTime(interviewWindow?.endsAt)}`
-            : '当前不在面试评分时间窗内，评分提交将被服务端拒绝（展示仅供查阅）'
+            ? '面试考核进行中：请按维度评分后提交'
+            : '当前阶段不可评分，评分提交将被拒绝（展示仅供查阅）'
         }
         description={
           interviewOpen
-            ? '完成本室所有学生评分后，才能提交拟录取名单；请优先处理「未评分」学生。'
+            ? '完成填报我的全部学生评分后，才能提交拟录取名单；请优先处理「未评分」学生。'
             : undefined
         }
       />
@@ -261,7 +261,7 @@ export default function MentorApplicantsPage() {
 
       <Card
         size="small"
-        title={`本实训室报名学生（${rows.length} 人）`}
+        title={`填报我的学生（${rows.length} 人）`}
         extra={
           <Space size={10}>
             <Tag color={pendingCount ? 'orange' : 'green'}>
@@ -277,7 +277,7 @@ export default function MentorApplicantsPage() {
         }
       >
         {rows.length === 0 ? (
-          <div className="empty-block">本室本轮暂无报名学生</div>
+          <div className="empty-block">本轮暂无学生填报你</div>
         ) : (
           <Table
             rowKey="studentId"
@@ -304,13 +304,6 @@ export default function MentorApplicantsPage() {
                   </Space>
                 ),
               },
-              {
-                title: '是否报我',
-                dataIndex: 'appliedToMe',
-                width: 110,
-                render: (v: boolean) => (v ? <Tag color="blue">报我</Tag> : <Tag>报同室其他导师</Tag>),
-              },
-              { title: '同室志愿数', dataIndex: 'intentMentorCount', width: 100 },
               {
                 title: '面试状态',
                 dataIndex: 'interview',
@@ -381,7 +374,7 @@ export default function MentorApplicantsPage() {
         type="info"
         showIcon
         message="评分 → 提交名单"
-        description="弹窗内可用 Ctrl+Enter 保存并自动跳到下一位未评分学生，不必反复返回列表。完成本室所有报名学生评分后，前往「名额与名单」提交拟录取与递补名单。"
+        description="弹窗内可用 Ctrl+Enter 保存并自动跳到下一位未评分学生，不必反复返回列表。完成填报我的学生评分后，前往「名额与名单」提交拟录取与递补名单；同室其他导师的评分互不影响。"
       />
 
       <Drawer
@@ -566,7 +559,7 @@ export default function MentorApplicantsPage() {
           <div className="score-progress">
             <Progress percent={percent} size="small" status={pendingCount ? 'active' : 'success'} />
             <Typography.Text type="secondary">
-              本室进度 {scoredCount}/{rows.length}
+              我的评分进度 {scoredCount}/{rows.length}
               {pendingCount > 0 ? `，还剩 ${pendingCount} 人` : '，全部完成'}
             </Typography.Text>
             <Tag icon={<KeyOutlined />}>Ctrl+Enter 保存并下一位</Tag>

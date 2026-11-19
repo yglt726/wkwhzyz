@@ -127,6 +127,7 @@ model Interview {
   id         String    @id @default(cuid())
   roundNo    Int       @map("round_no")
   studentId  String    @map("student_id")
+  mentorId   String    @map("mentor_id")
   labId      String    @map("lab_id")
   attitude   Int?
   logic      Int?
@@ -139,7 +140,8 @@ model Interview {
   scoredAt   DateTime? @map("scored_at")
   createdAt  DateTime  @default(now()) @map("created_at")
 
-  @@unique([roundNo, studentId, labId])
+  @@unique([roundNo, studentId, mentorId])
+  @@index([mentorId, roundNo, status])
   @@index([labId, roundNo, status])
   @@index([studentId, roundNo])
   @@map("interviews")

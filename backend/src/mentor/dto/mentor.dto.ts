@@ -65,4 +65,10 @@ export class PublishOffersDto {
   @IsArray()
   @IsString({ each: true })
   labAdjustCandidates?: string[];
+
+  /** 室内调剂直接录取：同室服从调剂、尚未被任何导师占用的学生 */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  labAdjustPrimary?: string[];
 }

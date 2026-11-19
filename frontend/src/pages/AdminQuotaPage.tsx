@@ -19,7 +19,29 @@ import {
 } from 'antd';
 import { ExclamationCircleOutlined, ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
-import { api, errMsg, formatTime } from '../api';
+import { api, errMsg } from '../api';
+
+type FlowControl = {
+  key: string;
+  label: string;
+  startsAt: string;
+  endsAt: string;
+  at: string;
+};
+
+/** 只保留真正会开关业务功能的阶段，按轮次推进 */
+const FLOW_DEFS: Array<{ key: string; label: string; stageKey: string; roundNo: number }> = [
+  { key: 'r1-intent', label: '第 1 轮 · 志愿填报', stageKey: 'INTENT', roundNo: 1 },
+  { key: 'r1-interview', label: '第 1 轮 · 面试与拟录取', stageKey: 'INTERVIEW', roundNo: 1 },
+  { key: 'r1-confirm', label: '第 1 轮 · 学生确认', stageKey: 'CONFIRM', roundNo: 1 },
+  { key: 'r2-intent', label: '第 2 轮 · 志愿填报', stageKey: 'INTENT', roundNo: 2 },
+  { key: 'r2-interview', label: '第 2 轮 · 面试与拟录取', stageKey: 'INTERVIEW', roundNo: 2 },
+  { key: 'r2-confirm', label: '第 2 轮 · 学生确认', stageKey: 'CONFIRM', roundNo: 2 },
+  { key: 'r3-intent', label: '第 3 轮 · 志愿填报', stageKey: 'INTENT', roundNo: 3 },
+  { key: 'r3-interview', label: '第 3 轮 · 面试与拟录取', stageKey: 'INTERVIEW', roundNo: 3 },
+  { key: 'r3-confirm', label: '第 3 轮 · 学生确认', stageKey: 'CONFIRM', roundNo: 3 },
+  { key: 'adjust', label: '统筹调剂', stageKey: 'ADJUST', roundNo: 0 },
+];
 
 export default function AdminQuotaPage() {
   const { message } = App.useApp();
@@ -64,7 +86,7 @@ export default function AdminQuotaPage() {
     Modal.confirm({
       title: `执行 L${level} ${level === 1 ? '实训室内部调剂' : level === 2 ? '全院跨实训室调剂' : '未服从调剂学生最终统筹'}`,
       icon: <SafetyCertificateOutlined />,
-      content: '调剂仅在 ADJUST 时间窗内可执行；已录取学生不会被重复分配。',
+      content: '已录取学生不会被重复分配；建议按 L1 → L2 → L3 顺序执行。',
       okText: '执行',
       onOk: async () => {
         try {
@@ -97,26 +119,13 @@ export default function AdminQuotaPage() {
     }
   };
 
-  const setClock = async (iso: string) => {
+  const applyFlow = async (opt: FlowControl) => {
     setBusy(true);
     try {
-      const res = await api.post('/admin/clock', { now: iso });
+      const res = await api.post('/admin/clock', { now: opt.at });
       message.success(
-        `模拟时间已切换，当前环节：${res.data.stage.activeStageLabel}${res.data.autoConfirmed ? `，自动确认 ${res.data.autoConfirmed} 人` : ''}`,
+        `已切换到「${opt.label}」${res.data.autoConfirmed ? `，自动确认 ${res.data.autoConfirmed} 人` : ''}`,
       );
-      await load();
-    } catch (e) {
-      message.error(errMsg(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const resetClock = async () => {
-    setBusy(true);
-    try {
-      await api.delete('/admin/clock');
-      message.success('已恢复真实时间');
       await load();
     } catch (e) {
       message.error(errMsg(e));
@@ -137,11 +146,30 @@ export default function AdminQuotaPage() {
   const overRowsConfirmed = overRows.reduce((s: number, r: any) => s + r.confirmed, 0);
   const overallOverRatio =
     overRowsQuota > 0 ? Math.max(0, overRowsConfirmed / overRowsQuota - 1) : 0;
-  const clockOptions: { value: string; label: string }[] = (windows?.windows ?? []).map((w: any) => ({
-    value: w.startsAt,
-    label: `${w.stageLabel}${w.roundNo ? `（R${w.roundNo}）` : ''} · ${formatTime(w.startsAt)}`,
-  }));
-  const uniqueClockOptions = Array.from(new Map(clockOptions.map((o: any) => [o.value, o])).values());
+  const flowOptions: FlowControl[] = FLOW_DEFS.flatMap((def) => {
+    const w = (windows?.windows ?? []).find(
+      (x: any) => x.stageKey === def.stageKey && x.roundNo === def.roundNo,
+    );
+    if (!w) return [];
+    // 进入阶段 1 分钟后切换：避免起止相接时上一个阶段仍被判定为开放
+    return [
+      {
+        key: def.key,
+        label: def.label,
+        startsAt: w.startsAt,
+        endsAt: w.endsAt,
+        at: new Date(new Date(w.startsAt).getTime() + 60_000).toISOString(),
+      },
+    ];
+  });
+  const nowMs = data?.stage?.now ? new Date(data.stage.now).getTime() : NaN;
+  const currentFlow = flowOptions.find(
+    (o) =>
+      Number.isFinite(nowMs) &&
+      nowMs >= new Date(o.startsAt).getTime() &&
+      nowMs <= new Date(o.endsAt).getTime(),
+  );
+  const currentDef = FLOW_DEFS.find((d) => d.key === currentFlow?.key);
 
   return (
     <div>
@@ -168,9 +196,19 @@ export default function AdminQuotaPage() {
         style={{ marginBottom: 16 }}
         type={data?.stage?.activeStage && data.stage.activeStage !== 'CLOSED' ? 'success' : 'info'}
         showIcon
-        message={`当前环节：${data?.stage?.activeStageLabel ?? '-'} · 模拟时钟 ${formatTime(data?.stage?.now)} · 当前轮次 R${data?.stage?.currentRound ?? '-'}`}
+        message={`当前进度：${currentFlow?.label ?? '当前未开放任何流程功能'}`}
         description={`未解决异常 ${data?.anomalyCount ?? 0} 条。超录、挂起、对账差异都会进入异常列表，公示期可追溯。`}
       />
+
+      {currentDef?.stageKey === 'INTERVIEW' && totalPending > 0 && (
+        <Alert
+          style={{ marginBottom: 16 }}
+          type="warning"
+          showIcon
+          message={`本轮已有 ${totalPending} 条待确认拟录取`}
+          description={`面试与拟录取完成后，请把进度切换到「第 ${currentDef.roundNo} 轮 · 学生确认」，学生端才会出现确认入口。`}
+        />
+      )}
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} md={5}>
@@ -336,29 +374,30 @@ export default function AdminQuotaPage() {
                 L3 未服从调剂学生最终统筹
               </Button>
               <Typography.Text type="secondary">
-                仅在 ADJUST 窗口（11/6 08:00–12:00）可执行；结果与明细见「调剂与公示」。
+                按 L1 → L2 → L3 逐级执行；结果与明细见「调剂与公示」。
               </Typography.Text>
             </Space>
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card size="small" title="演练时钟（服务端唯一权威）">
+          <Card size="small" title="选拔进度控制">
             <Space direction="vertical" style={{ width: '100%' }}>
-              <Typography.Text>
-                当前模拟时间：<strong>{formatTime(data?.stage?.now)}</strong>
-              </Typography.Text>
               <Select
                 style={{ width: '100%' }}
-                placeholder="跳到某个环节开始时间"
-                options={uniqueClockOptions}
-                onChange={(v) => void setClock(v)}
-                showSearch
+                placeholder="选择当前阶段"
+                options={flowOptions.map((o) => ({ value: o.key, label: o.label }))}
+                value={currentFlow?.key}
+                disabled={busy}
+                onChange={(key) => {
+                  const opt = flowOptions.find((o) => o.key === key);
+                  if (opt) void applyFlow(opt);
+                }}
               />
-              <Button onClick={resetClock} loading={busy}>
-                恢复真实时间
-              </Button>
               <Typography.Text type="secondary">
-                切换时钟会立即触发确认窗内的自动确认/到期失效任务；所有时间校验由后端判定。
+                切换后立即生效：学生端开放对应轮次的填报或确认，导师端开放对应轮次的评分和拟录取；系统会顺带执行一次自动确认。
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                公示与入组只做展示，不单独设置开关。
               </Typography.Text>
             </Space>
           </Card>
@@ -391,7 +430,6 @@ export default function AdminQuotaPage() {
                 </Space>
               ),
             },
-            { title: '确认时间', dataIndex: 'decidedAt', render: (v: string) => formatTime(v) },
             {
               title: '操作',
               width: 110,
@@ -426,7 +464,6 @@ export default function AdminQuotaPage() {
             { title: '导师', dataIndex: 'mentorName', width: 100 },
             { title: '原因', dataIndex: 'reasonLabel', width: 140 },
             { title: '说明', dataIndex: 'detail' },
-            { title: '时间', dataIndex: 'createdAt', render: (v: string) => formatTime(v) },
           ]}
         />
       </Card>

@@ -37,10 +37,10 @@ export default function StudentResultPage() {
           showIcon
           message={
             data.publicity.open
-              ? `结果公示中：${formatTime(data.publicity.startsAt)} ~ ${formatTime(data.publicity.endsAt)}`
+              ? '结果公示中：以下为最终去向'
               : data.publicity.finished
                 ? '公示期已结束，结果已生效'
-                : `公示尚未开始：${formatTime(data.publicity.startsAt)} 开始`
+                : '结果尚未公示'
           }
           description={
             data.publicity.open

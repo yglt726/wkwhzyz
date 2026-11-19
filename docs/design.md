@@ -53,7 +53,7 @@
 | 提交/修改本人意向（≤3，可同室多导师） | ✓ | – | – | – |
 | 查看本人 pending offer / 倒计时 | ✓ | – | – | – |
 | 确认唯一去向（实时抢占、幂等） | ✓ | – | – | – |
-| 面试评分（本实训室报名学生） | – | ✓ | – | – |
+| 面试评分（填报本导师的学生，同室多导师分别独立打分） | – | ✓ | – | – |
 | 提交拟录取/递补名单（可超发，二次确认） | – | ✓ | – | – |
 | 查看本导师名额账本 | – | ✓ | ✓ | ✓ |
 | 三级统筹调剂 | – | – | ✓ | – |
@@ -127,7 +127,9 @@ R3 结束 → ADJUST(1 室内 → 2 全院 → 3 未服从调剂者统筹) → P
 - `intents` 只约束 `(application_id, mentor_id)` 唯一，**不约束 lab**；`lab_id` 冗余存储便于热度统计与室内调剂。
 - 服务端校验：单轮意向 ≤3、导师不重复、导师必须存在且启用；同实验室多个导师合法。
 - 填报页 `/meta/bootstrap` 返回每个实训室的 `applicantCount`（本轮 distinct 学生数），前端提示「该实训室已报 N 位（截至当前）」。
-- 室内调剂候选池在 `AdjustService.level1` 中按 `(lab, student)` 去重：同一学生即使报了同室 3 位导师，只生成 1 条候选、最多被捞起 1 次。
+- 室内调剂在 `AdjustService.level1` 中按学生逐个处理：同一学生即使报了同室 3 位导师，也只会被分配 1 次；先去给他打分最高的导师，该导师满员时才在本室学生也报过、且仍有余额的导师中选分高者。
+- 导师也可在面试阶段提交/重提名单时**直接录取**本室服从调剂、尚未被任何导师占用的学生：服务端校验本轮同室意向 + `accept_lab_adjust` + 未被确认/预占，创建 `kind=LAB_ADJUST`、`status=PENDING`（`note=MENTOR_LAB_ADJUST`）；占用本人名额、先到先得，并发下后到者自动跳过并在返回的 `skippedLabAdjust` 中提示。导师端候选表展示同室每位导师的分项评分、总分与评语，可直接「加入拟录取 / 移出拟录取」。
+- 导师端候选只展示同室、服从调剂、未被任何导师占用的学生；自己的室内调剂预占在重提时仍可见（便于核对评分），自己的拟录取/递补学生不再计入候选顺位。
 
 ### 5.2 允许超发 + 软名额 + withdraw 释放
 
@@ -181,11 +183,12 @@ R3 结束 → ADJUST(1 室内 → 2 全院 → 3 未服从调剂者统筹) → P
 
 | 优先级 | 候选池 | 排序 | 目标 |
 | --- | --- | --- | --- |
-| L1 室内调剂 | 对某实训室有报名、`accept_lab_adjust=true`，按 (lab, student) 去重 | 面试总分降序 → 面试时间 → 填报时间 | 该室内剩余名额最多/原意向导师优先 |
-| L2 全院调剂 | `accept_college_adjust=true` 且尚未录取 | 面试最高分降序 | 全院剩余名额最多 |
+| L1 室内调剂 | `accept_lab_adjust=true`、仍未被录取，且本轮至少有一位填报导师已打分 | 学生按本轮最高分降序 → 室内候选顺位（同分） → 填报时间 | 先去给他打分最高的导师；该导师满员时，去其所在实训室里学生也报过、且仍有名额的导师；都没有则留给 L2 |
+| L2 全院调剂 | `accept_college_adjust=true` 且尚未录取 | 本轮面试最高分降序 → 填报时间 | 全院剩余名额最多（优先未报过的实训室） |
 | L3 最终统筹 | 仍未录取者（含不服从调剂） | 填报时间 → 学号 | 剩余任意名额 |
 
 - 命中即建 `CONFIRMED` offer（kind=`LAB_ADJUST/COLLEGE_ADJUST/FINAL`，priority_level=1/2/3）+ `confirmations(source=SYSTEM)`；
+- 每轮调剂开跑前先结算已过确认窗的 `PENDING`（置 `EXPIRED`），避免过期占位让容量判断偏小；
 - 同一学生一次 run 内只能被分配一次；幂等（已 CONFIRMED 直接跳过）。
 - 优先级顺序、超发系数、递补规则、评分权重存 `system_configs`，不硬编码。
 
@@ -215,7 +218,7 @@ R3 结束 → ADJUST(1 室内 → 2 全院 → 3 未服从调剂者统筹) → P
 | POST | `/api/student/offers/:id/confirm` | 学生 | 幂等确认（实时抢占） |
 | POST | `/api/student/offers/:id/decline` | 学生 | 拒绝（触发递补） |
 | GET | `/api/student/result` | 学生 | 最终结果/公示 |
-| GET | `/api/mentor/applicants` | 导师 | 本室报名学生 + 面试分 |
+| GET | `/api/mentor/applicants` | 导师 | 填报本导师的学生 + 本导师面试分 |
 | POST | `/api/mentor/interviews/score` | 导师 | 四维评分 |
 | GET | `/api/mentor/quota` | 导师 | 名额三层账本 |
 | POST | `/api/mentor/offers/publish` | 导师 | 拟录取 + 递补名单（可超发） |
@@ -235,7 +238,7 @@ R3 结束 → ADJUST(1 室内 → 2 全院 → 3 未服从调剂者统筹) → P
 ```
 labs 1─n mentors 1─n offers ─1 confirmations
 users(student) 1─n applications 1─n intents ─n mentors
-interviews: (round_no, student_id, lab_id) 唯一 —— 以实训室为单位一次面试，全室共享分数
+interviews: (round_no, student_id, mentor_id) 唯一 —— 每位导师独立评分；同一学生报同室多位导师时分别产生面试记录
 offers: 拟录取/递补/调剂共用；kind 区分，status 状态机
 withdrawals: 放鸽子记录（offer 不删除）
 quota_snapshots / anomalies: 每轮账本快照与差异

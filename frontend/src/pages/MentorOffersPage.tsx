@@ -47,6 +47,7 @@ export default function MentorOffersPage() {
   const [publishOpen, setPublishOpen] = useState(false);
   const [primary, setPrimary] = useState<string[]>([]);
   const [waitlist, setWaitlist] = useState<string[]>([]);
+  const [labPicks, setLabPicks] = useState<string[]>([]);
   const [candidateOrder, setCandidateOrder] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -84,44 +85,95 @@ export default function MentorOffersPage() {
     interviewWindow && simulatedNow >= new Date(interviewWindow.startsAt) && simulatedNow <= new Date(interviewWindow.endsAt),
   );
 
-  const projected = (quota?.confirmed ?? 0) + (quota?.pending ?? 0) + primary.length;
+  const projected = (quota?.confirmed ?? 0) + (quota?.pending ?? 0) + primary.length + labPicks.length;
   const overCount = Math.max(0, projected - (quota?.quota ?? 0));
   const overRatio = quota?.quota ? overCount / quota.quota : 0;
+
+  const labCandidateView: any[] = data?.labAdjustCandidates?.effective ?? [];
+  const labViewMap = useMemo(
+    () => new Map<string, any>(labCandidateView.map((c: any) => [c.studentId, c])),
+    [labCandidateView],
+  );
+  const offerMap = useMemo(
+    () => new Map<string, any>((data?.offers ?? []).map((o: any) => [o.studentId, o])),
+    [data],
+  );
 
   const labCandidates = useMemo(() => {
     const rowMap = new Map(rows.map((r: any) => [r.studentId, r]));
     return candidateOrder.map((id, i) => {
+      const c: any = labViewMap.get(id) ?? {};
       const r: any = rowMap.get(id) ?? {};
       return {
         studentId: id,
         rank: i + 1,
-        name: r.name ?? id,
-        studentNo: r.studentNo ?? '',
-        total: r.interview?.total ?? null,
-        appliedToMe: Boolean(r.appliedToMe),
+        name: c.studentName ?? r.name ?? id,
+        studentNo: c.studentNo ?? r.studentNo ?? '',
+        total: c.total ?? r.interview?.total ?? null,
+        scores: c.scores ?? [],
+        appliedToMe: Boolean(r),
+        picked: false,
       };
     });
-  }, [rows, candidateOrder]);
+  }, [rows, candidateOrder, labViewMap]);
+
+  // 本次将直接录取的室内调剂学生（未进入候选顺位，单独列出）
+  const pickedCandidates = useMemo(
+    () =>
+      labPicks.map((id) => {
+        const c: any = labViewMap.get(id) ?? {};
+        const o: any = offerMap.get(id) ?? {};
+        return {
+          studentId: id,
+          rank: null,
+          name: c.studentName ?? o.studentName ?? id,
+          studentNo: c.studentNo ?? o.studentNo ?? '',
+          total: c.total ?? null,
+          scores: c.scores ?? [],
+          appliedToMe: false,
+          picked: true,
+        };
+      }),
+    [labPicks, labViewMap, offerMap],
+  );
+
+  const candidateRows = useMemo(
+    () => [...labCandidates, ...pickedCandidates],
+    [labCandidates, pickedCandidates],
+  );
 
   const autoCandidateIds: string[] = useMemo(
     () =>
       (data?.labAdjustCandidates?.auto ?? [])
         .map((c: any) => c.studentId)
-        .filter((id: string) => !primary.includes(id) && !waitlist.includes(id)),
-    [data, primary, waitlist],
+        .filter(
+          (id: string) =>
+            !primary.includes(id) && !waitlist.includes(id) && !labPicks.includes(id),
+        ),
+    [data, primary, waitlist, labPicks],
   );
 
-  const addableCandidates = useMemo(
-    () =>
-      rows.filter(
-        (r: any) =>
-          r.acceptLabAdjust &&
-          !primary.includes(r.studentId) &&
-          !waitlist.includes(r.studentId) &&
-          !candidateOrder.includes(r.studentId),
-      ),
-    [rows, primary, waitlist, candidateOrder],
-  );
+  // 室内调剂候选来自本室全部服从调剂的学生，可能包含报同室其他导师的学生
+  const addableCandidates = useMemo(() => {
+    const rowMap = new Map(rows.map((r: any) => [r.studentId, r]));
+    return labCandidateView
+      .filter(
+        (c: any) =>
+          !primary.includes(c.studentId) &&
+          !waitlist.includes(c.studentId) &&
+          !labPicks.includes(c.studentId) &&
+          !candidateOrder.includes(c.studentId),
+      )
+      .map((c: any) => {
+        const r: any = rowMap.get(c.studentId);
+        return {
+          studentId: c.studentId,
+          name: c.studentName ?? r?.name ?? c.studentId,
+          studentNo: c.studentNo ?? r?.studentNo ?? '',
+          total: c.total ?? r?.interview?.total ?? null,
+        };
+      });
+  }, [rows, primary, waitlist, labPicks, candidateOrder, labCandidateView]);
 
   const isDefaultOrder = JSON.stringify(candidateOrder) === JSON.stringify(autoCandidateIds);
 
@@ -138,11 +190,23 @@ export default function MentorOffersPage() {
   const changePrimary = (v: string[]) => {
     setPrimary(v);
     setCandidateOrder((prev) => prev.filter((id) => !v.includes(id)));
+    setLabPicks((prev) => prev.filter((id) => !v.includes(id)));
   };
 
   const changeWaitlist = (v: string[]) => {
     setWaitlist(v);
     setCandidateOrder((prev) => prev.filter((id) => !v.includes(id)));
+    setLabPicks((prev) => prev.filter((id) => !v.includes(id)));
+  };
+
+  const addLabPick = (id: string) => {
+    setCandidateOrder((prev) => prev.filter((x) => x !== id));
+    setLabPicks((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  };
+
+  const removeLabPick = (id: string) => {
+    setLabPicks((prev) => prev.filter((x) => x !== id));
+    setCandidateOrder((prev) => (prev.includes(id) ? prev : [...prev, id]));
   };
 
   const openPublish = () => {
@@ -155,11 +219,17 @@ export default function MentorOffersPage() {
       .filter((o) => o.kind === 'WAITLIST' && o.status === 'PENDING')
       .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
       .map((o) => o.studentId);
+    const picks = existing
+      .filter(
+        (o) => o.kind === 'LAB_ADJUST' && o.status === 'PENDING' && o.note === 'MENTOR_LAB_ADJUST',
+      )
+      .map((o) => o.studentId);
     const eff = (data?.labAdjustCandidates?.effective ?? [])
       .map((c: any) => c.studentId)
-      .filter((id: string) => !prim.includes(id) && !wait.includes(id));
+      .filter((id: string) => !prim.includes(id) && !wait.includes(id) && !picks.includes(id));
     setPrimary(prim);
     setWaitlist(wait);
+    setLabPicks(picks);
     setCandidateOrder(eff);
     setPublishOpen(true);
   };
@@ -180,13 +250,20 @@ export default function MentorOffersPage() {
         primary,
         waitlist,
         labAdjustCandidates: candidateOrder,
+        labAdjustPrimary: labPicks,
         overQuotaConfirm,
       });
       const d = res.data;
+      const waitingConfirm = Math.max(
+        0,
+        (d.primary ?? 0) + (d.labAdjustPrimary ?? 0) - (d.autoConfirmed?.length ?? 0),
+      );
       message.success(
-        `名单已提交：拟录取 ${d.primary} 人，递补 ${d.waitlist} 人${d.autoConfirmed?.length ? `，自动确认 ${d.autoConfirmed.length} 人` : ''}`,
+        `名单已提交：拟录取 ${d.primary} 人，递补 ${d.waitlist} 人${d.labAdjustPrimary ? `，室内调剂录取 ${d.labAdjustPrimary} 人` : ''}${d.autoConfirmed?.length ? `，自动确认 ${d.autoConfirmed.length} 人` : ''}` +
+          (waitingConfirm > 0 ? `；请管理员把进度切到「第 ${roundNo} 轮 · 学生确认」，学生端才会出现确认入口` : ''),
       );
       if (d.skippedPlaced?.length) message.warning(`以下学生已有确认去向，已跳过：${d.skippedPlaced.join('、')}`);
+      if (d.skippedLabAdjust?.length) message.warning(`以下学生已被其他导师预占，室内调剂录取已跳过：${d.skippedLabAdjust.join('、')}`);
       setPublishOpen(false);
       await load(roundNo);
     } catch (e: any) {
@@ -217,11 +294,15 @@ export default function MentorOffersPage() {
   };
 
   const tryPublish = () => {
-    if (primary.length === 0 && waitlist.length === 0) {
+    if (primary.length === 0 && waitlist.length === 0 && labPicks.length === 0) {
       message.warning('请至少选择 1 名学生');
       return;
     }
-    const nameOf = (id: string) => rows.find((r: any) => r.studentId === id)?.name ?? id;
+    const nameOf = (id: string) =>
+      rows.find((r: any) => r.studentId === id)?.name ??
+      labViewMap.get(id)?.studentName ??
+      offerMap.get(id)?.studentName ??
+      id;
     Modal.confirm({
       title: overCount > 0 ? '确认提交？本次拟录取将超发' : '确认提交本轮名单？',
       icon: <ExclamationCircleOutlined />,
@@ -237,7 +318,11 @@ export default function MentorOffersPage() {
             {waitlist.length ? waitlist.map((id, i) => `${i + 1}.${nameOf(id)}`).join('、') : '无'}
           </p>
           <p>
-            <strong>室内调剂候选（{candidateOrder.length}）：</strong>
+            <strong>室内调剂录取（{labPicks.length}）：</strong>
+            {labPicks.length ? labPicks.map(nameOf).join('、') : '无'}
+          </p>
+          <p>
+            <strong>室内调剂候选顺位（{candidateOrder.length}）：</strong>
             {candidateOrder.length ? candidateOrder.map((id, i) => `${i + 1}.${nameOf(id)}`).join('、') : '无'}
           </p>
           {overCount > 0 && (
@@ -246,7 +331,7 @@ export default function MentorOffersPage() {
             </p>
           )}
           <p style={{ color: '#8c8c8c' }}>
-            提交后覆盖本轮旧名单；室内调剂候选顺序即优先顺位，未调整时使用系统自动顺序。
+            室内调剂录取会直接占用名额、先到先得；提交后覆盖本轮旧名单。候选顺位仅作为同分时的参考，实际 L1 先按“谁给分最高去谁”定向调剂。
           </p>
         </div>
       ),
@@ -314,8 +399,8 @@ export default function MentorOffersPage() {
             提交 / 重提拟录取与递补名单
           </Button>
           <Button onClick={() => void load(roundNo)}>刷新</Button>
-          {!interviewOpen && <Tag color="orange">当前不在面试窗口，提交被服务端禁止</Tag>}
-          {unscored.length > 0 && <Tag color="red">本室还有 {unscored.length} 人未评分，需先完成评分才能提交</Tag>}
+          {!interviewOpen && <Tag color="orange">当前阶段不可提交</Tag>}
+          {unscored.length > 0 && <Tag color="red">你还有 {unscored.length} 人未评分，需先完成评分才能提交</Tag>}
         </Space>
         <div style={{ marginTop: 12 }}>
           <Progress
@@ -359,6 +444,7 @@ export default function MentorOffersPage() {
                     {r.autoConfirmed && <Tag color="cyan">自动确认</Tag>}
                     {r.overQuota && <Tag color="orange">超发</Tag>}
                     {r.note === 'WAITLIST_PROMOTED' && <Tag color="purple">已递补</Tag>}
+                    {r.note === 'MENTOR_LAB_ADJUST' && <Tag color="geekblue">室内调剂录取</Tag>}
                   </Space>
                 ),
               },
@@ -373,7 +459,7 @@ export default function MentorOffersPage() {
         title={
           <Space>
             <span>提交名单</span>
-            <Tag color="blue">拟录取 / 递补 / 室内调剂候选</Tag>
+            <Tag color="blue">拟录取 / 递补 / 室内调剂</Tag>
           </Space>
         }
         width={860}
@@ -389,7 +475,7 @@ export default function MentorOffersPage() {
           type="info"
           showIcon
           message="拟录取名单为平行意向，选中顺序不作为志愿先后；递补名单顺序即递补顺位。"
-          description="只收到 1 个拟录取的学生会立即自动确认；收到 2 个及以上则在确认窗内自主选择，先确认先锁定。"
+          description="只收到 1 个拟录取的学生会立即自动确认；收到 2 个及以上则在确认窗内自主选择，先确认先锁定。室内调剂录取属于正式拟录取，同样占用名额、先到先得。"
         />
 
         <div className="publish-quota">
@@ -404,7 +490,7 @@ export default function MentorOffersPage() {
               <Statistic title="待预占" value={quota?.pending ?? 0} />
             </Col>
             <Col xs={12} md={4}>
-              <Statistic title="本次拟录取" value={primary.length} />
+              <Statistic title="本次拟录取" value={primary.length + labPicks.length} />
             </Col>
             <Col xs={24} md={5}>
               <Statistic
@@ -447,7 +533,7 @@ export default function MentorOffersPage() {
           options={myRows.map((r: any) => ({
             value: r.studentId,
             label: `${r.name}（${r.studentNo}）${r.interview?.total != null ? ` · 总分 ${r.interview.total}` : ' · 未评分'}`,
-            disabled: waitlist.includes(r.studentId),
+            disabled: waitlist.includes(r.studentId) || labPicks.includes(r.studentId),
           }))}
         />
         {primary.length > 0 && (
@@ -471,7 +557,7 @@ export default function MentorOffersPage() {
           options={myRows.map((r: any) => ({
             value: r.studentId,
             label: `${r.name}（${r.studentNo}）${r.interview?.total != null ? ` · 总分 ${r.interview.total}` : ''}`,
-            disabled: primary.includes(r.studentId),
+            disabled: primary.includes(r.studentId) || labPicks.includes(r.studentId),
           }))}
         />
         {waitlist.length > 0 && (
@@ -483,10 +569,10 @@ export default function MentorOffersPage() {
         <Divider style={{ margin: '16px 0 12px' }} />
         <div className="publish-section-head">
           <span>
-            ③ 室内调剂候选 <Typography.Text type="secondary">顺序即优先顺位，可上移/下移/移除/添加</Typography.Text>
+            ③ 室内调剂 <Typography.Text type="secondary">直接录取同室未被选择的学生，占用本人名额</Typography.Text>
           </span>
           <Space size={8}>
-            <Tag color={isDefaultOrder ? 'default' : 'purple'}>{isDefaultOrder ? '系统自动顺序' : '已自定义顺序'}</Tag>
+            <Tag color={isDefaultOrder ? 'default' : 'purple'}>{isDefaultOrder ? '默认顺序' : '已自定义顺序'}</Tag>
             <Button
               size="small"
               icon={<UndoOutlined />}
@@ -498,19 +584,46 @@ export default function MentorOffersPage() {
           </Space>
         </div>
         <div className="muted-line" style={{ marginBottom: 8 }}>
-          默认按面试总分降序自动生成；调剂阶段会按此顺序在本室捞人，未修改时提交的就是自动结果。
+          列表为本室勾选服从调剂、且尚未被任何导师占用的学生；可查看同室各导师的评分与评语后点击「加入拟录取」直接录取，先到先得。
+          未直接录取的学生仅记录为候选顺位，供 L1 调剂在同分时参考。
         </div>
-        {labCandidates.length === 0 ? (
-          <div className="empty-block small">本室暂无服从室内调剂的候选学生</div>
+        {candidateRows.length === 0 ? (
+          <div className="empty-block small">本室暂无服从室内调剂且未被占用的候选学生</div>
         ) : (
           <Table
             rowKey="studentId"
             size="small"
             pagination={false}
-            dataSource={labCandidates}
-            scroll={{ x: 620 }}
+            dataSource={candidateRows}
+            scroll={{ x: 760 }}
+            expandable={{
+              rowExpandable: (r: any) => (r.scores?.length ?? 0) > 0,
+              expandedRowRender: (r: any) => (
+                <div style={{ padding: '2px 0 2px 8px' }}>
+                  {r.scores.map((s: any) => (
+                    <div key={s.mentorId} style={{ marginBottom: 4 }}>
+                      <Space size={8} wrap>
+                        <strong>{s.mentorName || s.mentorId}</strong>
+                        <span>总分 {s.total}</span>
+                        <span>
+                          态度 {s.attitude ?? '-'} / 逻辑 {s.logic ?? '-'} / 编码 {s.coding ?? '-'} / 投入{' '}
+                          {s.timeInvest ?? '-'}
+                        </span>
+                      </Space>
+                      <div className="muted-line">评语：{s.remark || '无'}</div>
+                    </div>
+                  ))}
+                </div>
+              ),
+            }}
             columns={[
-              { title: '顺位', dataIndex: 'rank', width: 70 },
+              {
+                title: '顺位',
+                dataIndex: 'rank',
+                width: 88,
+                render: (v: any, r: any) =>
+                  r.picked ? <Tag color="green">直接录取</Tag> : v,
+              },
               {
                 title: '学生',
                 dataIndex: 'name',
@@ -524,51 +637,85 @@ export default function MentorOffersPage() {
               },
               { title: '学号', dataIndex: 'studentNo', width: 110 },
               {
-                title: '面试总分',
-                width: 100,
-                render: (_: any, r: any) => (r.total != null ? <strong>{r.total}</strong> : '-'),
+                title: '本室面试评分',
+                width: 260,
+                render: (_: any, r: any) =>
+                  r.scores?.length ? (
+                    <Space size={[4, 4]} wrap>
+                      {r.scores.map((s: any) => (
+                        <Tag key={s.mentorId} color={s.total === r.total ? 'green' : undefined}>
+                          {s.mentorName || s.mentorId} {s.total}
+                        </Tag>
+                      ))}
+                    </Space>
+                  ) : r.total != null ? (
+                    <strong>{r.total}</strong>
+                  ) : (
+                    <Tag>暂无评分</Tag>
+                  ),
               },
               {
-                title: '调整',
-                width: 150,
-                render: (_: any, r: any, index: number) => (
-                  <Space size={2}>
-                    <Button
-                      size="small"
-                      type="text"
-                      icon={<ArrowUpOutlined />}
-                      disabled={index === 0}
-                      onClick={() => moveCandidate(index, -1)}
-                    />
-                    <Button
-                      size="small"
-                      type="text"
-                      icon={<ArrowDownOutlined />}
-                      disabled={index === labCandidates.length - 1}
-                      onClick={() => moveCandidate(index, 1)}
-                    />
-                    <Button
-                      size="small"
-                      type="text"
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={() => setCandidateOrder((prev) => prev.filter((id) => id !== r.studentId))}
-                    />
-                  </Space>
-                ),
+                title: '操作',
+                width: 210,
+                render: (_: any, r: any, index: number) =>
+                  r.picked ? (
+                    <Button size="small" danger onClick={() => removeLabPick(r.studentId)}>
+                      移出拟录取
+                    </Button>
+                  ) : (
+                    <Space size={2}>
+                      <Button
+                        size="small"
+                        type="primary"
+                        ghost
+                        onClick={() => addLabPick(r.studentId)}
+                      >
+                        加入拟录取
+                      </Button>
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<ArrowUpOutlined />}
+                        disabled={index === 0}
+                        onClick={() => moveCandidate(index, -1)}
+                      />
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<ArrowDownOutlined />}
+                        disabled={index === labCandidates.length - 1}
+                        onClick={() => moveCandidate(index, 1)}
+                      />
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => setCandidateOrder((prev) => prev.filter((id) => id !== r.studentId))}
+                      />
+                    </Space>
+                  ),
               },
             ]}
+          />
+        )}
+        {labPicks.length > 0 && (
+          <Alert
+            style={{ marginTop: 8 }}
+            type="success"
+            showIcon
+            message={`本次将直接录取 ${labPicks.length} 名室内调剂学生，占用名额 ${labPicks.length} 个；若外部已被其他导师先行预占，提交时会自动跳过并提示。`}
           />
         )}
         {addableCandidates.length > 0 && (
           <Select
             style={{ width: '100%', marginTop: 8 }}
-            placeholder="从本室服从室内调剂的学生中追加候选"
+            placeholder="从本室服从室内调剂的学生中追加候选顺位"
             value={null}
             onChange={(id: string) => setCandidateOrder((prev) => [...prev, id])}
             options={addableCandidates.map((r: any) => ({
               value: r.studentId,
-              label: `${r.name}（${r.studentNo}）${r.interview?.total != null ? ` · 总分 ${r.interview.total}` : ''}`,
+              label: `${r.name}（${r.studentNo}）${r.total != null ? ` · 总分 ${r.total}` : ''}`,
             }))}
           />
         )}
